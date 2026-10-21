@@ -1,22 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { useStore } from '@/lib/store';
 
+const emptySubscribe = () => () => {};
+
 export default function StoreInitializer({ children }: { children: React.ReactNode }) {
-  const [hydrated, setHydrated] = useState(false);
+  const isHydrated = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const demoLoaded = useStore((s) => s.demoLoaded);
   const loadDemoScenario = useStore((s) => s.loadDemoScenario);
 
   useEffect(() => {
-    setHydrated(true);
     // Auto-load demo on first visit
     if (!demoLoaded) {
       loadDemoScenario();
     }
   }, [demoLoaded, loadDemoScenario]);
 
-  if (!hydrated) {
+  if (!isHydrated) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',

@@ -32,7 +32,9 @@ export default function DroneSimulationPage() {
   const [progress, setProgress] = useState(0);
   const [missionStatus, setMissionStatus] = useState('No active mission');
   const simStateRef = useRef(simState);
-  simStateRef.current = simState;
+  useEffect(() => {
+    simStateRef.current = simState;
+  }, [simState]);
 
   const nonObstacleNodes = graphState.nodes.filter((n) => n.type !== 'obstacle');
 
