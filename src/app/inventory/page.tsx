@@ -43,7 +43,6 @@ export default function InventoryPage() {
   // Sorting with DSA selection
   const [sortField, setSortField] = useState<SortField>('expiry');
   const [sortAlgo, setSortAlgo] = useState<SortAlgo>('merge');
-  const [sortMetrics, setSortMetrics] = useState<{ comparisons: number; timeMs: number; algoName: string } | null>(null);
 
   // Forms & UI state
   const [showForm, setShowForm] = useState(false);
@@ -85,7 +84,7 @@ export default function InventoryPage() {
   }, [inventory]);
 
   // ─── DSA 3: Sort Records with Selected Algorithm ────────────────────────────
-  const sortedItems = useMemo(() => {
+  const { sortedItems, sortMetrics } = useMemo(() => {
     let items = [...inventory];
 
     // Filter stage
@@ -129,13 +128,14 @@ export default function InventoryPage() {
         break;
     }
 
-    setSortMetrics({
-      comparisons: result.comparisons,
-      timeMs: Number(result.timeMs.toFixed(2)),
-      algoName: result.algorithmName,
-    });
-
-    return result.sorted;
+    return {
+      sortedItems: result.sorted,
+      sortMetrics: {
+        comparisons: result.comparisons,
+        timeMs: Number(result.timeMs.toFixed(2)),
+        algoName: result.algorithmName,
+      },
+    };
   }, [inventory, search, searchAlgo, filterType, filterStatus, filterBank, sortField, sortAlgo, now]);
 
   // Execute Search Algorithms for Demonstrations
