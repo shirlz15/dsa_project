@@ -1,630 +1,779 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import {
   Droplets, Play, Pause, RotateCcw, SkipForward, ArrowRight,
   Activity, Truck, Heart, FlaskConical, TestTube, ClipboardList,
   Network, Timer, Plane, ChevronDown, Layers, Search, BarChart3,
-  GitBranch, Hash, Database, ArrowLeftRight, Cpu, Shield, Clock
+  GitBranch, Hash, Database, ArrowLeftRight, Cpu, Shield, Clock,
+  AlertTriangle, CheckCircle, Navigation, Wind
 } from 'lucide-react';
 
-// ─── Scene Data ───────────────────────────────────────────────────────────────
+// ─── Scene Metadata ──────────────────────────────────────────────────────────
 
 const SCENES = [
-  { id: 1, title: 'Emergency Response', duration: 6000 },
-  { id: 2, title: 'Blood Collection', duration: 5000 },
-  { id: 3, title: 'Blood Group Identification', duration: 5000 },
-  { id: 4, title: 'Blood Requirement', duration: 5000 },
-  { id: 5, title: 'Inventory Network', duration: 6000 },
-  { id: 6, title: 'Time-Aware Redistribution', duration: 7000 },
-  { id: 7, title: 'Drone Route Simulation', duration: 7000 },
+  { id: 1, title: 'Emergency Response', duration: 7000, desc: 'Ambulance dispatched, patient attended respectfully, transition to hospital trauma center.' },
+  { id: 2, title: 'Blood Collection', duration: 6000, desc: 'Healthcare professional collects sample; specimen tube glides to laboratory testing station.' },
+  { id: 3, title: 'Blood Group ID', duration: 6000, desc: 'Simulated agglutination test reveals blood group with medical distinction note.' },
+  { id: 4, title: 'Blood Request', duration: 6000, desc: 'Critical hospital demand generated: component, quantity, urgency, and needed-by window.' },
+  { id: 5, title: 'Inventory Network', duration: 6500, desc: 'Regional blood banks evaluated with expiry status; request connects to redistribution planner.' },
+  { id: 6, title: 'Time-Aware Feasibility', duration: 7000, desc: 'Remaining shelf life evaluated against transport, processing, and safety margins.' },
+  { id: 7, title: 'Drone Simulation & Delay', duration: 8000, desc: 'Autonomous drone flight along Dijkstra shortest path with simulated delay recalculation.' },
 ];
 
-const BLOOD_GROUPS = ['A+', 'B+', 'O+', 'AB+'] as const;
+const BLOOD_GROUPS = ['O+', 'A+', 'B+', 'AB+'] as const;
 
 const DSA_FEATURES = [
-  { icon: Layers, name: 'Stack (LIFO)', usage: 'Reversible action history for inventory edits — push on change, pop to undo.', color: '#dc2626' },
-  { icon: ArrowRight, name: 'Queue (FIFO)', usage: 'Request processing in strict arrival order — first request in, first fulfilled.', color: '#3b82f6' },
-  { icon: RotateCcw, name: 'Circular Queue', usage: 'Fixed-capacity ring buffer for recent drone telemetry events.', color: '#06b6d4' },
-  { icon: GitBranch, name: 'Linked List', usage: 'Node-chain structure for inventory record management and traversal.', color: '#10b981' },
-  { icon: RotateCcw, name: 'Circular Linked List', usage: 'Blood bank review rotation — closed cycle ensures every bank is visited.', color: '#f59e0b' },
-  { icon: ArrowLeftRight, name: 'Deque', usage: 'Double-ended redistribution worklist — emergency tasks at front, routine at rear.', color: '#8b5cf6' },
-  { icon: Hash, name: 'Hash Table', usage: 'O(1) lookup by unit ID and bank ID using separate chaining.', color: '#ec4899' },
-  { icon: Search, name: 'Linear / Binary / Interpolation Search', usage: 'Locate matching inventory units by blood type, expiry, or quantity.', color: '#14b8a6' },
-  { icon: BarChart3, name: 'Sorting (Bubble, Selection, Insertion, Merge)', usage: 'Rank candidates by expiry urgency and feasibility score.', color: '#f97316' },
-  { icon: Network, name: 'Graph + BFS / DFS / Dijkstra', usage: 'Represent the blood bank corridor and compute shortest delivery routes.', color: '#dc2626' },
+  { icon: Layers, name: 'Stack (LIFO)', usage: 'Reversible action history for inventory edits — push on mutation, pop to undo stock modifications.', color: '#dc2626' },
+  { icon: ArrowRight, name: 'Queue (FIFO)', usage: 'Emergency request backlog — incoming blood requests processed in strict chronological arrival order.', color: '#3b82f6' },
+  { icon: RotateCcw, name: 'Circular Queue', usage: 'Fixed-capacity ring buffer storing live drone flight telemetry and sensor updates.', color: '#06b6d4' },
+  { icon: GitBranch, name: 'Singly Linked List', usage: 'Dynamic node-chain representing live blood unit batches for efficient insertion and deletion.', color: '#10b981' },
+  { icon: RotateCcw, name: 'Circular Linked List', usage: 'Closed-loop blood bank inspection scheduler guaranteeing every regional facility is reviewed.', color: '#f59e0b' },
+  { icon: ArrowLeftRight, name: 'Deque (Double-Ended)', usage: 'Bi-directional transfer worklist: emergency trauma cases pushed to head, routine transfers to tail.', color: '#8b5cf6' },
+  { icon: Hash, name: 'Hash Table', usage: 'O(1) rapid unit lookup by unique donor barcode and blood bank facility ID using chaining.', color: '#ec4899' },
+  { icon: Search, name: 'Search Algorithms', usage: 'Binary and interpolation search over sorted expiry timestamps to isolate near-expiry units.', color: '#14b8a6' },
+  { icon: BarChart3, name: 'Sorting Algorithms', usage: 'Multi-criteria ranking (Merge & Insertion sort) sorting candidate donor banks by urgency and shelf life.', color: '#f97316' },
+  { icon: Network, name: 'Graph Pathfinding', usage: 'Dijkstra shortest path algorithm across the South Tamil Nadu blood bank corridor for drone routing.', color: '#dc2626' },
 ];
 
-// ─── SVG Scene Components ────────────────────────────────────────────────────
+// ─── Scene 1: Emergency Response ─────────────────────────────────────────────
 
 function Scene1Emergency({ reducedMotion }: { reducedMotion: boolean }) {
   return (
-    <div className="scene-container">
-      <svg viewBox="0 0 800 400" className="scene-svg">
-        {/* Night sky gradient */}
+    <div className="scene-viewport">
+      <svg viewBox="0 0 880 440" className="scene-svg">
         <defs>
-          <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#050810" />
-            <stop offset="60%" stopColor="#0d111d" />
-            <stop offset="100%" stopColor="#131825" />
+          <linearGradient id="s1Sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#04060d" />
+            <stop offset="60%" stopColor="#0b101d" />
+            <stop offset="100%" stopColor="#111827" />
           </linearGradient>
-          <linearGradient id="roadGrad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="s1Road" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#1e293b" />
-            <stop offset="100%" stopColor="#0f172a" />
+            <stop offset="100%" stopColor="#0a0f1d" />
           </linearGradient>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="4" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="glowStrong">
-            <feGaussianBlur stdDeviation="8" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          <filter id="s1Glow">
+            <feGaussianBlur stdDeviation="5" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
 
-        {/* Sky */}
-        <rect width="800" height="400" fill="url(#skyGrad)" />
+        {/* Sky background */}
+        <rect width="880" height="440" fill="url(#s1Sky)" />
 
-        {/* Stars */}
-        {[...Array(20)].map((_, i) => (
-          <circle key={i} cx={40 + i * 38} cy={20 + (i % 5) * 25 + (i % 3) * 15} r={i % 3 === 0 ? 1.5 : 1} fill="rgba(255,255,255,0.4)">
-            {!reducedMotion && <animate attributeName="opacity" values="0.2;0.8;0.2" dur={`${2 + i % 3}s`} repeatCount="indefinite" />}
+        {/* Background stars */}
+        {[...Array(25)].map((_, i) => (
+          <circle key={i} cx={25 + i * 35} cy={15 + (i % 6) * 22} r={i % 4 === 0 ? 1.5 : 0.8} fill="#94a3b8" opacity="0.4">
+            {!reducedMotion && <animate attributeName="opacity" values="0.2;0.8;0.2" dur={`${2 + (i % 3)}s`} repeatCount="indefinite" />}
           </circle>
         ))}
 
-        {/* City silhouette */}
-        <rect x="50" y="180" width="40" height="120" rx="2" fill="#0f172a" />
-        <rect x="55" y="190" width="8" height="8" rx="1" fill="rgba(245,158,11,0.3)" />
-        <rect x="70" y="200" width="8" height="8" rx="1" fill="rgba(59,130,246,0.2)" />
-        <rect x="100" y="160" width="55" height="140" rx="2" fill="#0f172a" />
-        <rect x="110" y="170" width="8" height="8" rx="1" fill="rgba(245,158,11,0.4)" />
-        <rect x="130" y="185" width="8" height="8" rx="1" fill="rgba(245,158,11,0.2)" />
-        <rect x="110" y="200" width="8" height="8" rx="1" fill="rgba(59,130,246,0.3)" />
-        <rect x="165" y="200" width="35" height="100" rx="2" fill="#0f172a" />
-        <rect x="210" y="170" width="45" height="130" rx="2" fill="#131825" />
-        <rect x="265" y="190" width="35" height="110" rx="2" fill="#0f172a" />
+        {/* City skyline silhouettes */}
+        <rect x="30" y="190" width="45" height="130" rx="3" fill="#0c1322" />
+        <rect x="90" y="160" width="60" height="160" rx="3" fill="#0f172a" />
+        <rect x="165" y="210" width="40" height="110" rx="3" fill="#0c1322" />
+        <rect x="220" y="180" width="50" height="140" rx="3" fill="#131d31" />
 
-        {/* Hospital building on right */}
-        <rect x="580" y="150" width="120" height="150" rx="4" fill="#0f172a" stroke="rgba(220,38,38,0.3)" strokeWidth="1" />
-        <rect x="600" y="160" width="10" height="10" rx="1" fill="rgba(59,130,246,0.3)" />
-        <rect x="620" y="160" width="10" height="10" rx="1" fill="rgba(245,158,11,0.3)" />
-        <rect x="640" y="160" width="10" height="10" rx="1" fill="rgba(59,130,246,0.2)" />
-        <rect x="660" y="160" width="10" height="10" rx="1" fill="rgba(245,158,11,0.4)" />
-        <rect x="600" y="180" width="10" height="10" rx="1" fill="rgba(245,158,11,0.2)" />
-        <rect x="620" y="180" width="10" height="10" rx="1" fill="rgba(59,130,246,0.4)" />
-        <rect x="640" y="180" width="10" height="10" rx="1" fill="rgba(245,158,11,0.3)" />
-        <rect x="660" y="180" width="10" height="10" rx="1" fill="rgba(59,130,246,0.2)" />
-        {/* Hospital cross */}
-        <rect x="630" y="130" width="20" height="30" rx="2" fill="#0d111d" stroke="rgba(220,38,38,0.6)" strokeWidth="1.5" />
-        <rect x="634" y="138" width="12" height="3" rx="1" fill="#dc2626" filter="url(#glow)" />
-        <rect x="637.5" y="134" width="5" height="12" rx="1" fill="#dc2626" filter="url(#glow)" />
-
-        {/* Road */}
-        <rect x="0" y="300" width="800" height="100" fill="url(#roadGrad)" />
-        {/* Road lane markings */}
-        {[...Array(12)].map((_, i) => (
-          <rect key={i} x={20 + i * 66} y="345" width="40" height="3" rx="1.5" fill="rgba(255,255,255,0.15)">
+        {/* Roadway */}
+        <rect x="0" y="310" width="880" height="130" fill="url(#s1Road)" />
+        <line x1="0" y1="310" x2="880" y2="310" stroke="#334155" strokeWidth="2" />
+        {/* Road lane dashes */}
+        {[...Array(14)].map((_, i) => (
+          <rect key={i} x={15 + i * 65} y="365" width="35" height="3" rx="1.5" fill="rgba(255,255,255,0.2)">
             {!reducedMotion && (
-              <animate attributeName="x" from={20 + i * 66} to={-46 + i * 66} dur="2s" repeatCount="indefinite" />
+              <animate attributeName="x" from={15 + i * 65} to={-50 + i * 65} dur="2s" repeatCount="indefinite" />
             )}
           </rect>
         ))}
 
-        {/* Ambulance body */}
-        <g filter="url(#glow)">
-          <animateTransform
-            attributeName="transform"
-            type="translate"
-            from="-200 0" to="350 0"
-            dur={reducedMotion ? "0.01s" : "5s"}
-            fill="freeze"
-          />
-          {/* Main body */}
-          <rect x="100" y="270" width="120" height="45" rx="6" fill="#f1f5f9" />
-          <rect x="100" y="270" width="120" height="12" rx="3" fill="#dc2626" />
-          {/* Cross on side */}
-          <rect x="148" y="288" width="24" height="5" rx="2" fill="#dc2626" />
-          <rect x="156" y="280" width="8" height="20" rx="2" fill="#dc2626" />
-          {/* Cab */}
-          <rect x="220" y="278" width="40" height="37" rx="4" fill="#e2e8f0" />
-          <rect x="228" y="284" width="24" height="16" rx="3" fill="rgba(59,130,246,0.3)" />
-          {/* Wheels */}
-          <circle cx="130" cy="318" r="10" fill="#1e293b" />
-          <circle cx="130" cy="318" r="5" fill="#475569" />
-          <circle cx="235" cy="318" r="10" fill="#1e293b" />
-          <circle cx="235" cy="318" r="5" fill="#475569" />
-          {/* Emergency light (steady glow, no flashing) */}
-          <rect x="150" y="262" width="20" height="10" rx="5" fill="#dc2626" opacity="0.8" filter="url(#glow)" />
+        {/* Emergency scene on roadside: Respectful clinical depiction */}
+        <g transform="translate(180, 240)">
+          {/* Medical shelter/zone marker */}
+          <rect x="-10" y="20" width="160" height="60" rx="8" fill="rgba(15,23,42,0.85)" stroke="rgba(220,38,38,0.4)" strokeWidth="1" />
+          <text x="70" y="35" textAnchor="middle" fontSize="9" fill="#f87171" fontFamily="Inter" fontWeight="700">EMERGENCY FIRST AID SCENE</text>
+
+          {/* Stretcher bed with injured patient (respectful silhouette, warm blanket) */}
+          <rect x="15" y="55" width="60" height="10" rx="3" fill="#334155" />
+          <rect x="18" y="50" width="54" height="6" rx="2" fill="#e2e8f0" />
+          <circle cx="24" cy="48" r="4" fill="#cbd5e1" />
+
+          {/* Paramedic 1 (attending patient) */}
+          <circle cx="48" cy="38" r="6" fill="#f87171" />
+          <rect x="42" y="45" width="12" height="18" rx="3" fill="#dc2626" />
+          <rect x="44" y="50" width="8" height="4" fill="#ffffff" opacity="0.8" />
+
+          {/* Paramedic 2 with medical kit */}
+          <circle cx="85" cy="40" r="6" fill="#60a5fa" />
+          <rect x="79" y="47" width="12" height="18" rx="3" fill="#2563eb" />
+          <rect x="94" y="54" width="8" height="8" rx="2" fill="#ef4444" />
+          <text x="98" y="60" textAnchor="middle" fontSize="6" fill="#fff" fontWeight="bold">+</text>
+
+          {/* Field IV drip pole */}
+          <line x1="12" y1="30" x2="12" y2="65" stroke="#94a3b8" strokeWidth="1.5" />
+          <circle cx="12" cy="28" r="3" fill="#38bdf8" />
         </g>
 
-        {/* Hospital entrance light */}
-        <rect x="620" y="290" width="40" height="10" rx="2" fill="rgba(220,38,38,0.2)" filter="url(#glowStrong)" />
+        {/* Moving Ambulance (animated toward hospital) */}
+        <g>
+          {!reducedMotion ? (
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="-180, 0"
+              to="360, 0"
+              dur="6.5s"
+              fill="freeze"
+            />
+          ) : (
+            <animateTransform attributeName="transform" type="translate" to="260, 0" dur="0.01s" fill="freeze" />
+          )}
+
+          {/* Headlights beam */}
+          <polygon points="265,335 370,300 370,370" fill="rgba(254,240,138,0.12)" />
+
+          {/* Ambulance Body */}
+          <rect x="120" y="295" width="115" height="44" rx="6" fill="#f8fafc" />
+          <rect x="120" y="315" width="115" height="10" fill="#dc2626" />
+          {/* Medical Red Cross on Ambulance */}
+          <rect x="162" y="303" width="20" height="5" rx="1.5" fill="#dc2626" />
+          <rect x="169.5" y="295.5" width="5" height="20" rx="1.5" fill="#dc2626" />
+
+          {/* Front cab */}
+          <path d="M 235 305 L 255 315 L 255 339 L 235 339 Z" fill="#e2e8f0" />
+          <polygon points="236,308 250,317 236,317" fill="rgba(59,130,246,0.5)" />
+
+          {/* Rotating emergency lights */}
+          <circle cx="155" cy="290" r="5" fill="#ef4444" filter="url(#s1Glow)">
+            {!reducedMotion && <animate attributeName="opacity" values="0.4;1;0.4" dur="0.5s" repeatCount="indefinite" />}
+          </circle>
+          <circle cx="215" cy="290" r="5" fill="#3b82f6" filter="url(#s1Glow)">
+            {!reducedMotion && <animate attributeName="opacity" values="1;0.4;1" dur="0.5s" repeatCount="indefinite" />}
+          </circle>
+
+          {/* Wheels */}
+          <circle cx="150" cy="339" r="10" fill="#0f172a" stroke="#475569" strokeWidth="2" />
+          <circle cx="150" cy="339" r="4" fill="#94a3b8" />
+          <circle cx="225" cy="339" r="10" fill="#0f172a" stroke="#475569" strokeWidth="2" />
+          <circle cx="225" cy="339" r="4" fill="#94a3b8" />
+        </g>
+
+        {/* Destination Hospital (City General Hospital) */}
+        <g transform="translate(620, 140)">
+          {/* Main Hospital Building */}
+          <rect x="0" y="20" width="220" height="160" rx="6" fill="#0d1424" stroke="rgba(220,38,38,0.4)" strokeWidth="1.5" />
+          <rect x="15" y="35" width="190" height="22" rx="4" fill="rgba(220,38,38,0.15)" />
+          <text x="110" y="50" textAnchor="middle" fontSize="11" fill="#fca5a5" fontFamily="Inter" fontWeight="800" letterSpacing="0.05em">
+            MADURAI GRH · TRAUMA CARE
+          </text>
+
+          {/* Glowing Red Cross on Rooftop */}
+          <circle cx="110" cy="8" r="14" fill="#0d1424" stroke="#dc2626" strokeWidth="1.5" />
+          <rect x="104" y="2" width="12" height="12" rx="1" fill="#ef4444" filter="url(#s1Glow)" />
+          <rect x="101" y="6" width="18" height="4" rx="1" fill="#ffffff" />
+          <rect x="108" y="-1" width="4" height="18" rx="1" fill="#ffffff" />
+
+          {/* Hospital Windows */}
+          {[...Array(12)].map((_, i) => (
+            <rect key={i} x={25 + (i % 4) * 45} y={75 + Math.floor(i / 4) * 25} width="24" height="14" rx="2" fill={i % 3 === 0 ? "rgba(254,240,138,0.4)" : "rgba(59,130,246,0.3)"} />
+          ))}
+
+          {/* Emergency Bay Entrance */}
+          <rect x="65" y="145" width="90" height="35" rx="4" fill="#1e293b" stroke="#dc2626" strokeWidth="1.5" />
+          <text x="110" y="162" textAnchor="middle" fontSize="9" fill="#ef4444" fontWeight="bold">EMERGENCY BAY</text>
+        </g>
       </svg>
-      <div className="scene-caption">
-        <h3>Emergency Response Activated</h3>
-        <p>A patient requires a blood transfusion. The ambulance transports them to the nearest hospital.</p>
+
+      <div className="scene-status-badge">
+        <Activity size={14} className="text-red-500 animate-pulse" />
+        <span>Stage 1: Roadside Dispatch to Emergency Trauma Center</span>
       </div>
     </div>
   );
 }
+
+// ─── Scene 2: Blood Collection ───────────────────────────────────────────────
 
 function Scene2Collection({ reducedMotion }: { reducedMotion: boolean }) {
   return (
-    <div className="scene-container">
-      <svg viewBox="0 0 800 400" className="scene-svg">
+    <div className="scene-viewport">
+      <svg viewBox="0 0 880 440" className="scene-svg">
         <defs>
-          <linearGradient id="labBg" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0d111d" />
-            <stop offset="100%" stopColor="#050810" />
+          <linearGradient id="s2Bg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#060913" />
+            <stop offset="100%" stopColor="#0f172a" />
+          </linearGradient>
+          <linearGradient id="tubeBlood" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" />
+            <stop offset="100%" stopColor="#991b1b" />
           </linearGradient>
         </defs>
 
-        <rect width="800" height="400" fill="url(#labBg)" />
+        <rect width="880" height="440" fill="url(#s2Bg)" />
 
-        {/* Lab environment */}
-        <rect x="100" y="60" width="600" height="280" rx="12" fill="rgba(13,17,29,0.8)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+        {/* Laboratory Station Frame */}
+        <rect x="50" y="40" width="780" height="360" rx="16" fill="rgba(15,23,42,0.6)" stroke="rgba(148,163,184,0.15)" strokeWidth="1.5" />
 
-        {/* Counter / workbench */}
-        <rect x="120" y="250" width="560" height="8" rx="2" fill="#1e293b" />
+        {/* Benchtop */}
+        <rect x="70" y="270" width="740" height="12" rx="3" fill="#1e293b" stroke="#334155" strokeWidth="1" />
 
-        {/* Healthcare professional silhouette */}
-        <g transform="translate(200, 100)">
-          <circle cx="40" cy="20" r="18" fill="#1e293b" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
-          <rect x="20" y="40" width="40" height="60" rx="8" fill="#1e293b" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
-          {/* Lab coat detail */}
-          <rect x="22" y="45" width="36" height="4" rx="2" fill="rgba(59,130,246,0.15)" />
-          {/* Stethoscope hint */}
-          <circle cx="40" cy="55" r="4" fill="none" stroke="rgba(148,163,184,0.3)" strokeWidth="1" />
+        {/* Healthcare Specialist Station (Left) */}
+        <g transform="translate(140, 110)">
+          {/* Medical Professional */}
+          <circle cx="50" cy="35" r="22" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+          {/* Surgical Cap */}
+          <path d="M 28 30 Q 50 12 72 30 Z" fill="#0284c7" />
+          {/* Lab Coat */}
+          <path d="M 25 65 L 75 65 L 85 160 L 15 160 Z" fill="#f8fafc" stroke="#94a3b8" strokeWidth="1" />
+          <path d="M 40 65 L 50 110 L 60 65 Z" fill="#0284c7" />
+          {/* ID Badge */}
+          <rect x="30" y="80" width="14" height="18" rx="2" fill="#38bdf8" />
+          {/* Stethoscope */}
+          <path d="M 38 65 Q 50 100 62 65" fill="none" stroke="#dc2626" strokeWidth="2.5" />
+
+          {/* Collection phlebotomy arm and vial */}
+          <text x="50" y="180" textAnchor="middle" fontSize="11" fill="#94a3b8" fontFamily="Inter" fontWeight="600">
+            Clinical Phlebotomist
+          </text>
         </g>
 
-        {/* Specimen tube */}
-        <g transform="translate(380, 120)">
-          {!reducedMotion && (
-            <animateTransform attributeName="transform" type="translate" values="380,160;380,120;440,120" dur="3s" fill="freeze" />
+        {/* Moving Specimen Tube on Automated Track */}
+        <g>
+          {!reducedMotion ? (
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="280, 150"
+              to="530, 150"
+              dur="4.5s"
+              repeatCount="indefinite"
+            />
+          ) : (
+            <animateTransform attributeName="transform" type="translate" to="400, 150" dur="0.01s" fill="freeze" />
           )}
-          <rect x="0" y="0" width="24" height="70" rx="8" fill="rgba(220,38,38,0.15)" stroke="rgba(220,38,38,0.5)" strokeWidth="1.5" />
-          {/* Blood level */}
-          <rect x="3" y="20" width="18" height="44" rx="6" fill="rgba(220,38,38,0.3)">
-            {!reducedMotion && (
-              <animate attributeName="height" values="0;44" dur="2s" fill="freeze" />
-            )}
-          </rect>
-          {/* Label */}
-          <rect x="2" y="5" width="20" height="10" rx="2" fill="rgba(255,255,255,0.1)" />
-          <text x="12" y="13" textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.5)" fontFamily="Inter">SAMPLE</text>
-          {/* Cap */}
-          <rect x="4" y="-6" width="16" height="8" rx="3" fill="#dc2626" />
+
+          {/* Track shadow / glow */}
+          <ellipse cx="20" cy="115" rx="25" ry="6" fill="rgba(220,38,38,0.2)" />
+
+          {/* Vacutainer Blood Collection Tube */}
+          <rect x="8" y="10" width="24" height="85" rx="10" fill="rgba(255,255,255,0.12)" stroke="#e2e8f0" strokeWidth="1.5" />
+          {/* Blood column filling */}
+          <rect x="10" y="32" width="20" height="60" rx="8" fill="url(#tubeBlood)" />
+          {/* Meniscus curve */}
+          <ellipse cx="20" cy="33" rx="10" ry="2" fill="#f87171" />
+          {/* Red rubber cap */}
+          <rect x="7" y="0" width="26" height="12" rx="3" fill="#dc2626" stroke="#991b1b" strokeWidth="1" />
+          {/* Clinical Specimen Label */}
+          <rect x="9" y="42" width="22" height="28" rx="2" fill="#ffffff" />
+          <line x1="12" y1="48" x2="28" y2="48" stroke="#000" strokeWidth="1.5" />
+          <line x1="12" y1="53" x2="24" y2="53" stroke="#000" strokeWidth="1" />
+          <line x1="12" y1="58" x2="27" y2="58" stroke="#000" strokeWidth="1" />
+          <text x="20" y="67" textAnchor="middle" fontSize="5" fill="#dc2626" fontWeight="bold">#BLD-8821</text>
         </g>
 
-        {/* Testing station */}
-        <g transform="translate(500, 100)">
-          <rect x="0" y="0" width="140" height="140" rx="10" fill="rgba(13,17,29,0.9)" stroke="rgba(220,38,38,0.2)" strokeWidth="1" />
-          <text x="70" y="20" textAnchor="middle" fontSize="9" fill="rgba(148,163,184,0.6)" fontFamily="Inter" fontWeight="600">TESTING STATION</text>
+        {/* Automated conveyor track */}
+        <line x1="260" y1="265" x2="570" y2="265" stroke="#475569" strokeWidth="6" strokeDasharray="12 6">
+          {!reducedMotion && <animate attributeName="stroke-dashoffset" from="36" to="0" dur="1s" repeatCount="indefinite" />}
+        </line>
+        <line x1="260" y1="272" x2="570" y2="272" stroke="#1e293b" strokeWidth="3" />
 
-          {/* Screen */}
-          <rect x="15" y="30" width="110" height="70" rx="6" fill="#050810" stroke="rgba(59,130,246,0.2)" strokeWidth="0.5" />
-          {/* Screen content - waveform */}
-          <polyline points="25,60 40,50 55,70 70,55 85,65 100,45 115,60" fill="none" stroke="rgba(16,185,129,0.5)" strokeWidth="1.5">
-            {!reducedMotion && (
-              <animate attributeName="stroke-dashoffset" from="200" to="0" dur="2s" fill="freeze" />
-            )}
+        {/* Laboratory Centrifuge & Automated Analyzer (Right) */}
+        <g transform="translate(560, 90)">
+          {/* Main analyzer console */}
+          <rect x="0" y="0" width="220" height="180" rx="12" fill="#090d16" stroke="rgba(56,189,248,0.3)" strokeWidth="1.5" />
+          <rect x="15" y="15" width="190" height="30" rx="6" fill="rgba(56,189,248,0.1)" />
+          <text x="110" y="34" textAnchor="middle" fontSize="10" fill="#38bdf8" fontFamily="Inter" fontWeight="700">
+            AUTO-CENTRIFUGE &amp; ANALYZER #4
+          </text>
+
+          {/* Digital Waveform Screen */}
+          <rect x="20" y="55" width="180" height="60" rx="6" fill="#020617" stroke="rgba(34,197,94,0.3)" strokeWidth="1" />
+          <polyline
+            points="30,85 50,85 60,65 70,105 80,85 105,85 115,70 125,95 135,85 170,85"
+            fill="none"
+            stroke="#22c55e"
+            strokeWidth="2"
+          >
+            {!reducedMotion && <animate attributeName="stroke-dashoffset" from="200" to="0" dur="2s" repeatCount="indefinite" />}
           </polyline>
 
-          {/* Status indicators */}
-          <circle cx="35" cy="118" r="4" fill="rgba(16,185,129,0.6)">
-            {!reducedMotion && <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" />}
+          {/* Status Indicators */}
+          <circle cx="40" cy="140" r="5" fill="#22c55e" />
+          <text x="52" y="144" fontSize="9" fill="#94a3b8">Sample Intake Ready</text>
+          <circle cx="150" cy="140" r="5" fill="#eab308">
+            {!reducedMotion && <animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" repeatCount="indefinite" />}
           </circle>
-          <text x="45" y="121" fontSize="7" fill="rgba(148,163,184,0.5)" fontFamily="Inter">Processing</text>
+          <text x="162" y="144" fontSize="9" fill="#94a3b8">Speed: 4,000 RPM</text>
         </g>
-
-        {/* Arrow showing sample flow */}
-        <line x1="420" y1="170" x2="495" y2="170" stroke="rgba(220,38,38,0.3)" strokeWidth="1.5" strokeDasharray="5 3">
-          {!reducedMotion && (
-            <animate attributeName="stroke-dashoffset" from="16" to="0" dur="1s" repeatCount="indefinite" />
-          )}
-        </line>
-        <polygon points="495,165 505,170 495,175" fill="rgba(220,38,38,0.4)" />
       </svg>
-      <div className="scene-caption">
-        <h3>Blood Sample Collection</h3>
-        <p>A healthcare professional collects a labelled blood sample, which moves to the testing station for analysis.</p>
-        <p className="scene-disclaimer">Visual simulation — not a depiction of an actual laboratory process.</p>
+
+      <div className="scene-status-badge">
+        <FlaskConical size={14} className="text-sky-400" />
+        <span>Stage 2: Sample Aspiration &amp; Laboratory Transport Conveyor</span>
       </div>
     </div>
   );
 }
+
+// ─── Scene 3: Blood Group Identification ─────────────────────────────────────
 
 function Scene3BloodGroup({ reducedMotion, selectedGroup }: { reducedMotion: boolean; selectedGroup: string }) {
   return (
-    <div className="scene-container">
-      <svg viewBox="0 0 800 400" className="scene-svg">
-        <rect width="800" height="400" fill="#050810" />
+    <div className="scene-viewport">
+      <svg viewBox="0 0 880 440" className="scene-svg">
+        <rect width="880" height="440" fill="#060913" />
 
-        {/* Lab result card */}
-        <g transform="translate(200, 40)">
-          <rect x="0" y="0" width="400" height="300" rx="16" fill="rgba(13,17,29,0.95)" stroke="rgba(220,38,38,0.3)" strokeWidth="1.5" />
+        {/* Agglutination Reaction Card */}
+        <g transform="translate(70, 35)">
+          <rect x="0" y="0" width="740" height="370" rx="16" fill="rgba(15,23,42,0.9)" stroke="rgba(220,38,38,0.3)" strokeWidth="1.5" />
 
-          {/* Header */}
-          <rect x="0" y="0" width="400" height="50" rx="16" fill="rgba(220,38,38,0.08)" />
-          <rect x="0" y="35" width="400" height="15" fill="rgba(220,38,38,0.08)" />
-          <text x="200" y="32" textAnchor="middle" fontSize="14" fill="#f87171" fontFamily="Inter" fontWeight="700" letterSpacing="0.1em">BLOOD GROUP IDENTIFICATION</text>
+          {/* Header Bar */}
+          <rect x="0" y="0" width="740" height="50" rx="16" fill="rgba(220,38,38,0.12)" />
+          <text x="30" y="32" fontSize="13" fill="#f87171" fontFamily="Inter" fontWeight="800" letterSpacing="0.05em">
+            SIMULATED HEMATOLOGY TEST RESULT · ABO &amp; Rh(D) TYPING
+          </text>
+          <rect x="580" y="12" width="130" height="26" rx="6" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+          <text x="645" y="29" textAnchor="middle" fontSize="10" fill="#94a3b8" fontWeight="600">SAMPLE: #BLD-8821</text>
 
-          {/* Result display */}
-          <g>
-            {!reducedMotion && (
-              <animate attributeName="opacity" from="0" to="1" dur="1.5s" fill="freeze" />
-            )}
-            <text x="200" y="130" textAnchor="middle" fontSize="72" fill="#dc2626" fontFamily="Syne" fontWeight="800" filter="url(#glow)">{selectedGroup}</text>
-            <text x="200" y="160" textAnchor="middle" fontSize="12" fill="rgba(148,163,184,0.7)" fontFamily="Inter">ABO/Rh Classification Result</text>
-          </g>
+          {/* Three Test Wells (Anti-A, Anti-B, Anti-D) */}
+          <g transform="translate(40, 75)">
+            {/* Well 1: Anti-A */}
+            <rect x="0" y="0" width="180" height="150" rx="12" fill="#0b1120" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
+            <circle cx="90" cy="65" r="40" fill="rgba(59,130,246,0.1)" stroke="#3b82f6" strokeWidth="1.5" />
+            <circle cx="90" cy="65" r="32" fill={selectedGroup.includes('A') ? '#991b1b' : 'rgba(239,68,68,0.2)'} />
+            <text x="90" y="125" textAnchor="middle" fontSize="11" fill="#94a3b8" fontWeight="600">Well A (Anti-A)</text>
+            <text x="90" y="142" textAnchor="middle" fontSize="10" fill={selectedGroup.includes('A') ? '#ef4444' : '#22c55e'} fontWeight="bold">
+              {selectedGroup.includes('A') ? 'Agglutination (+)' : 'No Agglutination (-)'}
+            </text>
 
-          {/* Test result details */}
-          <g transform="translate(40, 180)">
-            <rect x="0" y="0" width="140" height="40" rx="8" fill="rgba(220,38,38,0.08)" stroke="rgba(220,38,38,0.2)" strokeWidth="0.5" />
-            <text x="70" y="16" textAnchor="middle" fontSize="9" fill="rgba(148,163,184,0.6)" fontFamily="Inter">Anti-A</text>
-            <text x="70" y="32" textAnchor="middle" fontSize="14" fill={selectedGroup.startsWith('A') || selectedGroup.startsWith('AB') ? '#10b981' : '#64748b'} fontFamily="Inter" fontWeight="700">
-              {selectedGroup.startsWith('A') || selectedGroup.startsWith('AB') ? '+ Positive' : '— Negative'}
+            {/* Well 2: Anti-B */}
+            <rect x="220" y="0" width="180" height="150" rx="12" fill="#0b1120" stroke="rgba(234,179,8,0.3)" strokeWidth="1" />
+            <circle cx="310" cy="65" r="40" fill="rgba(234,179,8,0.1)" stroke="#eab308" strokeWidth="1.5" />
+            <circle cx="310" cy="65" r="32" fill={selectedGroup.includes('B') ? '#991b1b' : 'rgba(239,68,68,0.2)'} />
+            <text x="310" y="125" textAnchor="middle" fontSize="11" fill="#94a3b8" fontWeight="600">Well B (Anti-B)</text>
+            <text x="310" y="142" textAnchor="middle" fontSize="10" fill={selectedGroup.includes('B') ? '#ef4444' : '#22c55e'} fontWeight="bold">
+              {selectedGroup.includes('B') ? 'Agglutination (+)' : 'No Agglutination (-)'}
+            </text>
+
+            {/* Well 3: Anti-D (Rh) */}
+            <rect x="440" y="0" width="180" height="150" rx="12" fill="#0b1120" stroke="rgba(34,197,94,0.3)" strokeWidth="1" />
+            <circle cx="530" cy="65" r="40" fill="rgba(34,197,94,0.1)" stroke="#22c55e" strokeWidth="1.5" />
+            <circle cx="530" cy="65" r="32" fill={selectedGroup.includes('+') ? '#991b1b' : 'rgba(239,68,68,0.2)'} />
+            <text x="530" y="125" textAnchor="middle" fontSize="11" fill="#94a3b8" fontWeight="600">Well D (Anti-Rh)</text>
+            <text x="530" y="142" textAnchor="middle" fontSize="10" fill={selectedGroup.includes('+') ? '#ef4444' : '#22c55e'} fontWeight="bold">
+              {selectedGroup.includes('+') ? 'Agglutination (+)' : 'No Agglutination (-)'}
             </text>
           </g>
-          <g transform="translate(220, 180)">
-            <rect x="0" y="0" width="140" height="40" rx="8" fill="rgba(59,130,246,0.08)" stroke="rgba(59,130,246,0.2)" strokeWidth="0.5" />
-            <text x="70" y="16" textAnchor="middle" fontSize="9" fill="rgba(148,163,184,0.6)" fontFamily="Inter">Anti-B</text>
-            <text x="70" y="32" textAnchor="middle" fontSize="14" fill={selectedGroup.startsWith('B') || selectedGroup.startsWith('AB') ? '#10b981' : '#64748b'} fontFamily="Inter" fontWeight="700">
-              {selectedGroup.startsWith('B') || selectedGroup.startsWith('AB') ? '+ Positive' : '— Negative'}
+
+          {/* Blood Type Display Box */}
+          <g transform="translate(40, 245)">
+            <rect x="0" y="0" width="660" height="60" rx="10" fill="rgba(220,38,38,0.15)" stroke="#dc2626" strokeWidth="1.5" />
+            <text x="30" y="38" fontSize="13" fill="#cbd5e1" fontWeight="600">Identified Blood Phenotype:</text>
+            <text x="235" y="42" fontSize="26" fill="#f87171" fontFamily="Syne, Inter" fontWeight="800">{selectedGroup}</text>
+            <text x="310" y="38" fontSize="12" fill="#94a3b8">
+              ({selectedGroup === 'O+' ? 'Universal Red Cell Donor for Rh+' : selectedGroup === 'AB+' ? 'Universal Plasma Recipient' : 'Specific ABO/Rh Profile'})
             </text>
           </g>
-          <g transform="translate(130, 235)">
-            <rect x="0" y="0" width="140" height="40" rx="8" fill="rgba(245,158,11,0.08)" stroke="rgba(245,158,11,0.2)" strokeWidth="0.5" />
-            <text x="70" y="16" textAnchor="middle" fontSize="9" fill="rgba(148,163,184,0.6)" fontFamily="Inter">Rh Factor</text>
-            <text x="70" y="32" textAnchor="middle" fontSize="14" fill={selectedGroup.includes('+') ? '#10b981' : '#f59e0b'} fontFamily="Inter" fontWeight="700">
-              {selectedGroup.includes('+') ? '+ Positive' : '— Negative'}
+
+          {/* Mandatory Clinical Distinction Notice */}
+          <g transform="translate(40, 315)">
+            <rect x="0" y="0" width="660" height="40" rx="6" fill="#090d16" stroke="rgba(234,179,8,0.4)" strokeWidth="1" />
+            <text x="15" y="24" fontSize="10" fill="#fde047" fontWeight="bold">CRITICAL CLINICAL NOTICE:</text>
+            <text x="175" y="24" fontSize="10" fill="#e2e8f0">
+              Blood group identification is an initial screening step. Full cross-match (IAT/Coombs) is mandatory prior to actual transfusion.
             </text>
           </g>
         </g>
       </svg>
-      <div className="scene-caption">
-        <h3>Blood Group: <span style={{ color: '#dc2626' }}>{selectedGroup}</span></h3>
-        <p>The ABO and Rh classification identifies the blood group characteristics of the sample.</p>
-        <p className="scene-disclaimer">Blood grouping alone does not establish full transfusion compatibility. Actual clinical decisions require appropriate crossmatch testing by authorized staff.</p>
+
+      <div className="scene-status-badge">
+        <TestTube size={14} className="text-amber-400" />
+        <span>Stage 3: Blood Group Identification (ABO/Rh Confirmed)</span>
       </div>
     </div>
   );
 }
+
+// ─── Scene 4: Blood Request ──────────────────────────────────────────────────
 
 function Scene4Requirement({ reducedMotion }: { reducedMotion: boolean }) {
-  const requestData = {
-    component: 'Packed RBC',
-    bloodType: 'O+',
-    quantity: 2,
-    neededBy: '3 hours',
-    status: 'Pending',
-    priority: 'Urgent',
-    hospital: 'GRH Madurai',
-  };
-
   return (
-    <div className="scene-container">
-      <svg viewBox="0 0 800 400" className="scene-svg">
-        <rect width="800" height="400" fill="#050810" />
+    <div className="scene-viewport">
+      <svg viewBox="0 0 880 440" className="scene-svg">
+        <rect width="880" height="440" fill="#060913" />
 
-        {/* Request form */}
-        <g transform="translate(150, 30)">
-          {!reducedMotion && (
-            <animate attributeName="opacity" from="0" to="1" dur="0.8s" fill="freeze" />
-          )}
-          <rect x="0" y="0" width="500" height="340" rx="16" fill="rgba(13,17,29,0.95)" stroke="rgba(245,158,11,0.3)" strokeWidth="1.5" />
+        {/* Hospital Request Ticket Container */}
+        <g transform="translate(100, 30)">
+          <rect x="0" y="0" width="680" height="380" rx="16" fill="rgba(15,23,42,0.95)" stroke="rgba(245,158,11,0.4)" strokeWidth="1.5" />
 
-          {/* Header */}
-          <rect x="0" y="0" width="500" height="50" rx="16" fill="rgba(245,158,11,0.06)" />
-          <rect x="0" y="35" width="500" height="15" fill="rgba(245,158,11,0.06)" />
-          <circle cx="30" cy="25" r="10" fill="rgba(245,158,11,0.15)" />
-          <text x="30" y="29" textAnchor="middle" fontSize="12" fill="#f59e0b">📋</text>
-          <text x="55" y="30" fontSize="13" fill="#f59e0b" fontFamily="Inter" fontWeight="700" letterSpacing="0.05em">BLOOD COMPONENT REQUEST</text>
+          {/* Ticket Header */}
+          <rect x="0" y="0" width="680" height="54" rx="16" fill="rgba(245,158,11,0.1)" />
+          <circle cx="35" cy="27" r="14" fill="rgba(245,158,11,0.2)" />
+          <text x="35" y="32" textAnchor="middle" fontSize="14" fill="#f59e0b">🚨</text>
+          <text x="65" y="33" fontSize="14" fill="#fbbf24" fontFamily="Inter" fontWeight="800" letterSpacing="0.05em">
+            CRITICAL BLOOD COMPONENT REQUISITION · ORDER #REQ-2026-904
+          </text>
+          <rect x="560" y="14" width="100" height="26" rx="13" fill="#dc2626" />
+          <text x="610" y="31" textAnchor="middle" fontSize="10" fill="#ffffff" fontWeight="bold">EMERGENCY</text>
 
-          {/* Priority badge */}
-          <rect x="380" y="12" width="90" height="26" rx="13" fill="rgba(245,158,11,0.15)" stroke="rgba(245,158,11,0.4)" strokeWidth="0.5" />
-          <text x="425" y="29" textAnchor="middle" fontSize="10" fill="#f59e0b" fontFamily="Inter" fontWeight="700">{requestData.priority}</text>
+          {/* Grid of Request Parameters */}
+          <g transform="translate(35, 75)">
+            {[
+              { label: 'REQUESTING HOSPITAL', value: 'Madurai GRH (Trauma ICU)', icon: '🏥' },
+              { label: 'BLOOD COMPONENT', value: 'Packed Red Blood Cells (PRBC)', icon: '🩸' },
+              { label: 'REQUIRED BLOOD GROUP', value: 'O Positive (O+)', icon: '🧪' },
+              { label: 'UNITS REQUESTED', value: '4 Units (450 mL each)', icon: '📦' },
+              { label: 'MAX NEEDED-BY WINDOW', value: '90 Minutes (Urgent Transfusion)', icon: '⏱️' },
+              { label: 'LOCAL INVENTORY STATUS', value: '0 Units Available (DEFICIT ALERT)', icon: '⚠️' },
+            ].map((item, i) => {
+              const x = (i % 2) * 310;
+              const y = Math.floor(i / 2) * 75;
+              return (
+                <g key={i} transform={`translate(${x}, ${y})`}>
+                  <rect x="0" y="0" width="290" height="60" rx="8" fill="#0b1120" stroke="rgba(148,163,184,0.15)" strokeWidth="1" />
+                  <text x="15" y="22" fontSize="9" fill="#94a3b8" fontWeight="600" letterSpacing="0.05em">{item.label}</text>
+                  <text x="15" y="44" fontSize="13" fill={i === 5 ? '#ef4444' : '#f1f5f9'} fontWeight="700">
+                    {item.icon} {item.value}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
 
-          {/* Fields */}
-          {[
-            { label: 'Requesting Hospital', value: requestData.hospital, y: 70 },
-            { label: 'Component Required', value: requestData.component, y: 110 },
-            { label: 'Blood Group', value: requestData.bloodType, y: 150 },
-            { label: 'Quantity Required', value: `${requestData.quantity} units`, y: 190 },
-            { label: 'Needed Within', value: requestData.neededBy, y: 230 },
-            { label: 'Request Status', value: requestData.status, y: 270 },
-          ].map((field, i) => (
-            <g key={i}>
-              {!reducedMotion && (
-                <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin={`${0.3 + i * 0.15}s`} fill="freeze" />
-              )}
-              <text x="30" y={field.y} fontSize="10" fill="rgba(148,163,184,0.6)" fontFamily="Inter" fontWeight="600">{field.label}</text>
-              <text x="30" y={field.y + 18} fontSize="15" fill="#f1f5f9" fontFamily="Inter" fontWeight="600">{field.value}</text>
-              <line x1="30" y1={field.y + 28} x2="470" y2={field.y + 28} stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
-            </g>
-          ))}
+          {/* Dispatch Notice Action Banner */}
+          <g transform="translate(35, 310)">
+            <rect x="0" y="0" width="610" height="50" rx="10" fill="rgba(220,38,38,0.15)" stroke="rgba(220,38,38,0.4)" strokeWidth="1" />
+            <text x="25" y="30" fontSize="12" fill="#fca5a5" fontWeight="600">
+              ⚡ Local inventory exhausted. Triggering regional peer-to-peer redistribution search...
+            </text>
+          </g>
         </g>
       </svg>
-      <div className="scene-caption">
-        <h3>Blood Requirement Generated</h3>
-        <p>The hospital generates a simulated blood component request specifying type, quantity, and urgency.</p>
-        <p className="scene-disclaimer">All displayed data is entirely fictional and for demonstration only.</p>
+
+      <div className="scene-status-badge">
+        <ClipboardList size={14} className="text-amber-400" />
+        <span>Stage 4: Hospital Blood Request Generated &amp; Backlogged into FIFO Queue</span>
       </div>
     </div>
   );
 }
 
+// ─── Scene 5: Inventory Network ──────────────────────────────────────────────
+
 function Scene5Network({ reducedMotion }: { reducedMotion: boolean }) {
-  const banks = [
-    { id: 'BB1', name: 'Ramanathapuram GH', x: 400, y: 80, units: 12, expiring: 3 },
-    { id: 'BB2', name: 'IRT-PM Paramakudi', x: 200, y: 180, units: 8, expiring: 1 },
-    { id: 'BB3', name: 'Rameswaram Centre', x: 600, y: 180, units: 5, expiring: 2 },
-    { id: 'BB4', name: 'Kamuthi Hospital', x: 150, y: 320, units: 15, expiring: 0 },
-    { id: 'BB5', name: 'GRH Madurai', x: 650, y: 320, units: 22, expiring: 4 },
+  const nodes = [
+    { id: 'GRH', name: 'Madurai GRH (Destination)', x: 440, y: 220, units: 0, expiring: 0, type: 'target' },
+    { id: 'RMD', name: 'Ramanathapuram GH', x: 200, y: 110, units: 14, expiring: 3, type: 'source' },
+    { id: 'SVG', name: 'Sivaganga MC', x: 680, y: 110, units: 9, expiring: 1, type: 'source' },
+    { id: 'KMT', name: 'Kamuthi Hospital', x: 200, y: 330, units: 6, expiring: 4, type: 'source' },
+    { id: 'PMK', name: 'Paramakudi Hospital', x: 680, y: 330, units: 11, expiring: 0, type: 'source' },
   ];
 
-  const edges = [
-    { from: 0, to: 1 }, { from: 0, to: 2 }, { from: 1, to: 3 },
-    { from: 2, to: 4 }, { from: 1, to: 2 }, { from: 3, to: 4 },
+  const connections = [
+    { from: 1, to: 0 },
+    { from: 2, to: 0 },
+    { from: 3, to: 0 },
+    { from: 4, to: 0 },
+    { from: 1, to: 3 },
+    { from: 2, to: 4 },
   ];
 
   return (
-    <div className="scene-container">
-      <svg viewBox="0 0 800 400" className="scene-svg">
-        <rect width="800" height="400" fill="#050810" />
+    <div className="scene-viewport">
+      <svg viewBox="0 0 880 440" className="scene-svg">
+        <rect width="880" height="440" fill="#060913" />
 
-        {/* Connection edges */}
-        {edges.map((e, i) => (
-          <line key={i} x1={banks[e.from].x} y1={banks[e.from].y} x2={banks[e.to].x} y2={banks[e.to].y}
-            stroke="rgba(220,38,38,0.15)" strokeWidth="1.5" strokeDasharray="6 4">
-            {!reducedMotion && (
-              <animate attributeName="stroke-dashoffset" from="20" to="0" dur="2s" repeatCount="indefinite" />
+        {/* Map corridor gridlines */}
+        {[...Array(15)].map((_, i) => (
+          <line key={`x${i}`} x1={i * 60} y1="0" x2={i * 60} y2="440" stroke="rgba(255,255,255,0.03)" />
+        ))}
+        {[...Array(8)].map((_, i) => (
+          <line key={`y${i}`} x1="0" y1={i * 60} x2="880" y2={i * 60} stroke="rgba(255,255,255,0.03)" />
+        ))}
+
+        {/* Transmission connection links */}
+        {connections.map((c, i) => (
+          <line
+            key={i}
+            x1={nodes[c.from].x}
+            y1={nodes[c.from].y}
+            x2={nodes[c.to].x}
+            y2={nodes[c.to].y}
+            stroke={c.to === 0 ? "rgba(239,68,68,0.4)" : "rgba(148,163,184,0.15)"}
+            strokeWidth={c.to === 0 ? 2 : 1}
+            strokeDasharray={c.to === 0 ? "8 4" : "4 4"}
+          >
+            {!reducedMotion && c.to === 0 && (
+              <animate attributeName="stroke-dashoffset" from="24" to="0" dur="1.5s" repeatCount="indefinite" />
             )}
           </line>
         ))}
 
-        {/* Request pulse traveling */}
-        {!reducedMotion && edges.slice(0, 3).map((e, i) => (
-          <circle key={`pulse-${i}`} r="3" fill="#dc2626" filter="url(#glow)">
-            <animateMotion dur={`${2 + i * 0.5}s`} repeatCount="indefinite"
-              path={`M${banks[e.from].x},${banks[e.from].y} L${banks[e.to].x},${banks[e.to].y}`} />
+        {/* Signal pulses moving toward target hospital */}
+        {!reducedMotion && [1, 2, 3].map((srcIdx, i) => (
+          <circle key={`p-${i}`} r="4" fill="#ef4444">
+            <animateMotion
+              dur={`${2 + i * 0.5}s`}
+              repeatCount="indefinite"
+              path={`M${nodes[srcIdx].x},${nodes[srcIdx].y} L${nodes[0].x},${nodes[0].y}`}
+            />
           </circle>
         ))}
 
-        {/* Bank nodes */}
-        {banks.map((bank, i) => (
-          <g key={bank.id}>
-            {!reducedMotion && (
-              <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin={`${i * 0.2}s`} fill="freeze" />
-            )}
-            <circle cx={bank.x} cy={bank.y} r="32" fill="rgba(13,17,29,0.95)" stroke="rgba(220,38,38,0.4)" strokeWidth="1.5" />
-            <text x={bank.x} y={bank.y - 5} textAnchor="middle" fontSize="10" fill="#f87171" fontFamily="Inter" fontWeight="700">{bank.id}</text>
-            <text x={bank.x} y={bank.y + 8} textAnchor="middle" fontSize="8" fill="rgba(148,163,184,0.7)" fontFamily="Inter">{bank.units} units</text>
-            <text x={bank.x} y={bank.y + 18} textAnchor="middle" fontSize="7" fill={bank.expiring > 0 ? '#f59e0b' : '#10b981'} fontFamily="Inter">
-              {bank.expiring > 0 ? `${bank.expiring} expiring` : 'stable'}
-            </text>
+        {/* Blood Bank Nodes */}
+        {nodes.map((node) => {
+          const isTarget = node.type === 'target';
+          return (
+            <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
+              {/* Outer halo */}
+              <circle
+                r={isTarget ? 38 : 30}
+                fill={isTarget ? "rgba(220,38,38,0.2)" : "rgba(15,23,42,0.9)"}
+                stroke={isTarget ? "#ef4444" : "#3b82f6"}
+                strokeWidth={isTarget ? 2.5 : 1.5}
+              />
 
-            {/* Bank label below */}
-            <text x={bank.x} y={bank.y + 48} textAnchor="middle" fontSize="8" fill="rgba(148,163,184,0.5)" fontFamily="Inter">{bank.name}</text>
-          </g>
-        ))}
+              {/* Node ID */}
+              <text y="-5" textAnchor="middle" fontSize={isTarget ? 13 : 11} fill={isTarget ? "#fca5a5" : "#93c5fd"} fontWeight="800">
+                {node.id}
+              </text>
+              <text y="10" textAnchor="middle" fontSize="8" fill="#e2e8f0" fontWeight="600">
+                {isTarget ? "URGENT DEMAND" : `${node.units} Units O+`}
+              </text>
+              <text y="20" textAnchor="middle" fontSize="7" fill={node.expiring > 0 ? "#f59e0b" : "#22c55e"}>
+                {node.expiring > 0 ? `${node.expiring} Near Expiry` : "Stable"}
+              </text>
+
+              {/* Label */}
+              <text y={isTarget ? 54 : 44} textAnchor="middle" fontSize="9" fill="#94a3b8" fontWeight="600">
+                {node.name}
+              </text>
+            </g>
+          );
+        })}
       </svg>
-      <div className="scene-caption">
-        <h3>Blood Bank Inventory Network</h3>
-        <p>The system evaluates candidate blood banks, checking inventory availability, expiry status, and estimated transport time.</p>
+
+      <div className="scene-status-badge">
+        <Network size={14} className="text-red-400" />
+        <span>Stage 5: Regional Graph Topology &amp; Stock Expiry Survey</span>
       </div>
     </div>
   );
 }
+
+// ─── Scene 6: Time-Aware Redistribution Planning ─────────────────────────────
 
 function Scene6Redistribution({ reducedMotion }: { reducedMotion: boolean }) {
-  const candidateA = {
-    name: 'Ramanathapuram GH → GRH Madurai',
-    remaining: 420,
-    transport: 180,
-    processing: 45,
-    safety: 30,
-    required: 255,
-    usable: 165,
-    feasible: true,
-  };
-  const candidateB = {
-    name: 'Kamuthi Hospital → GRH Madurai',
-    remaining: 180,
-    transport: 210,
-    processing: 45,
-    safety: 30,
-    required: 285,
-    usable: -105,
-    feasible: false,
-  };
-
   return (
-    <div className="scene-container">
-      <svg viewBox="0 0 800 400" className="scene-svg">
-        <rect width="800" height="400" fill="#050810" />
+    <div className="scene-viewport">
+      <svg viewBox="0 0 880 440" className="scene-svg">
+        <rect width="880" height="440" fill="#060913" />
 
-        {/* Candidate A - Feasible */}
-        <g>
-          {!reducedMotion && <animate attributeName="opacity" from="0" to="1" dur="0.6s" fill="freeze" />}
-          <rect x="30" y="20" width="360" height="340" rx="14" fill="rgba(13,17,29,0.95)" stroke="rgba(16,185,129,0.4)" strokeWidth="1.5" />
-          <rect x="30" y="20" width="360" height="40" rx="14" fill="rgba(16,185,129,0.06)" />
-          <rect x="30" y="46" width="360" height="14" fill="rgba(16,185,129,0.06)" />
+        {/* Matrix comparison layout */}
+        <g transform="translate(60, 30)">
+          <rect x="0" y="0" width="760" height="380" rx="16" fill="rgba(15,23,42,0.95)" stroke="rgba(56,189,248,0.3)" strokeWidth="1.5" />
 
-          <text x="50" y="46" fontSize="11" fill="#10b981" fontFamily="Inter" fontWeight="700">✓ CANDIDATE A — FEASIBLE</text>
-          <text x="50" y="78" fontSize="9" fill="rgba(148,163,184,0.7)" fontFamily="Inter">{candidateA.name}</text>
+          {/* Header */}
+          <rect x="0" y="0" width="760" height="50" rx="16" fill="rgba(56,189,248,0.1)" />
+          <text x="30" y="32" fontSize="13" fill="#38bdf8" fontFamily="Inter" fontWeight="800" letterSpacing="0.05em">
+            TIME-AWARE REDISTRIBUTION FEASIBILITY ENGINE
+          </text>
+          <text x="730" y="32" textAnchor="end" fontSize="10" fill="#94a3b8">
+            Formula: Remaining Shelf Life − (Transport + Processing + Safety) = Usable Margin
+          </text>
 
-          {/* Timeline bars */}
-          {[
-            { label: 'Remaining Time', val: candidateA.remaining, max: 420, color: '#10b981', y: 100 },
-            { label: 'Transport Duration', val: candidateA.transport, max: 420, color: '#3b82f6', y: 140 },
-            { label: 'Receiving & Processing', val: candidateA.processing, max: 420, color: '#f59e0b', y: 180 },
-            { label: 'Safety Margin', val: candidateA.safety, max: 420, color: '#8b5cf6', y: 220 },
-          ].map((bar, i) => (
-            <g key={i}>
-              <text x="50" y={bar.y} fontSize="9" fill="rgba(148,163,184,0.6)" fontFamily="Inter">{bar.label}</text>
-              <rect x="50" y={bar.y + 6} width="300" height="14" rx="4" fill="rgba(255,255,255,0.04)" />
-              <rect x="50" y={bar.y + 6} width={300 * (bar.val / bar.max)} height="14" rx="4" fill={bar.color} opacity="0.6">
-                {!reducedMotion && <animate attributeName="width" from="0" to={300 * (bar.val / bar.max)} dur="1s" begin={`${i * 0.2}s`} fill="freeze" />}
-              </rect>
-              <text x="355" y={bar.y + 16} textAnchor="end" fontSize="9" fill="rgba(241,245,249,0.8)" fontFamily="JetBrains Mono">{bar.val} min</text>
+          {/* Candidate A (FEASIBLE) */}
+          <g transform="translate(30, 70)">
+            <rect x="0" y="0" width="700" height="135" rx="12" fill="#091424" stroke="rgba(34,197,94,0.4)" strokeWidth="1.5" />
+            <rect x="15" y="15" width="220" height="26" rx="6" fill="rgba(34,197,94,0.15)" />
+            <text x="25" y="32" fontSize="11" fill="#4ade80" fontWeight="bold">Candidate A: Ramanathapuram GH</text>
+
+            <g transform="translate(20, 55)">
+              {[
+                { label: 'Remaining Shelf Life', value: '420 min (7.0 hrs)' },
+                { label: 'Drone Flight Time', value: '45 min (Dijkstra route)' },
+                { label: 'Inspection / Receiving', value: '30 min' },
+                { label: 'Safety Margin Buffer', value: '30 min' },
+                { label: 'Net Usable Shelf Life', value: '+315 min MARGIN' },
+              ].map((m, i) => (
+                <g key={i} transform={`translate(${i * 135}, 0)`}>
+                  <text y="14" fontSize="8" fill="#94a3b8">{m.label}</text>
+                  <text y="36" fontSize="11" fill={i === 4 ? "#4ade80" : "#f1f5f9"} fontWeight={i === 4 ? "800" : "600"}>{m.value}</text>
+                </g>
+              ))}
             </g>
-          ))}
 
-          {/* Formula */}
-          <text x="50" y="270" fontSize="8" fill="rgba(148,163,184,0.5)" fontFamily="JetBrains Mono">usableTime = remaining - (transport + processing + safety)</text>
-          <text x="50" y="290" fontSize="14" fill="#10b981" fontFamily="Syne" fontWeight="800">= {candidateA.usable} min</text>
-          <rect x="50" y="310" width="300" height="30" rx="8" fill="rgba(16,185,129,0.1)" stroke="rgba(16,185,129,0.3)" strokeWidth="0.5" />
-          <text x="200" y="330" textAnchor="middle" fontSize="11" fill="#10b981" fontFamily="Inter" fontWeight="600">✓ Time-feasible for redistribution</text>
-        </g>
+            {/* Feasibility tag */}
+            <rect x="560" y="90" width="125" height="30" rx="6" fill="#15803d" />
+            <text x="622" y="110" textAnchor="middle" fontSize="11" fill="#ffffff" fontWeight="bold">✓ 100% FEASIBLE</text>
+          </g>
 
-        {/* Candidate B - Infeasible */}
-        <g>
-          {!reducedMotion && <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="0.4s" fill="freeze" />}
-          <rect x="410" y="20" width="360" height="340" rx="14" fill="rgba(13,17,29,0.95)" stroke="rgba(220,38,38,0.4)" strokeWidth="1.5" />
-          <rect x="410" y="20" width="360" height="40" rx="14" fill="rgba(220,38,38,0.06)" />
-          <rect x="410" y="46" width="360" height="14" fill="rgba(220,38,38,0.06)" />
+          {/* Candidate B (INFEASIBLE - SHELF LIFE EXCEEDED) */}
+          <g transform="translate(30, 220)">
+            <rect x="0" y="0" width="700" height="135" rx="12" fill="#1a0f18" stroke="rgba(239,68,68,0.4)" strokeWidth="1.5" />
+            <rect x="15" y="15" width="220" height="26" rx="6" fill="rgba(239,68,68,0.15)" />
+            <text x="25" y="32" fontSize="11" fill="#f87171" fontWeight="bold">Candidate B: Kamuthi Hospital</text>
 
-          <text x="430" y="46" fontSize="11" fill="#dc2626" fontFamily="Inter" fontWeight="700">✗ CANDIDATE B — INFEASIBLE</text>
-          <text x="430" y="78" fontSize="9" fill="rgba(148,163,184,0.7)" fontFamily="Inter">{candidateB.name}</text>
-
-          {[
-            { label: 'Remaining Time', val: candidateB.remaining, max: 420, color: '#dc2626', y: 100 },
-            { label: 'Transport Duration', val: candidateB.transport, max: 420, color: '#3b82f6', y: 140 },
-            { label: 'Receiving & Processing', val: candidateB.processing, max: 420, color: '#f59e0b', y: 180 },
-            { label: 'Safety Margin', val: candidateB.safety, max: 420, color: '#8b5cf6', y: 220 },
-          ].map((bar, i) => (
-            <g key={i}>
-              <text x="430" y={bar.y} fontSize="9" fill="rgba(148,163,184,0.6)" fontFamily="Inter">{bar.label}</text>
-              <rect x="430" y={bar.y + 6} width="300" height="14" rx="4" fill="rgba(255,255,255,0.04)" />
-              <rect x="430" y={bar.y + 6} width={300 * (bar.val / 420)} height="14" rx="4" fill={bar.color} opacity="0.6">
-                {!reducedMotion && <animate attributeName="width" from="0" to={300 * (bar.val / 420)} dur="1s" begin={`${0.4 + i * 0.2}s`} fill="freeze" />}
-              </rect>
-              <text x="735" y={bar.y + 16} textAnchor="end" fontSize="9" fill="rgba(241,245,249,0.8)" fontFamily="JetBrains Mono">{bar.val} min</text>
+            <g transform="translate(20, 55)">
+              {[
+                { label: 'Remaining Shelf Life', value: '95 min (1.5 hrs)' },
+                { label: 'Ground Ambulance Time', value: '110 min (Heavy traffic)' },
+                { label: 'Inspection / Receiving', value: '30 min' },
+                { label: 'Safety Margin Buffer', value: '30 min' },
+                { label: 'Net Usable Shelf Life', value: '-75 min DEFICIT' },
+              ].map((m, i) => (
+                <g key={i} transform={`translate(${i * 135}, 0)`}>
+                  <text y="14" fontSize="8" fill="#94a3b8">{m.label}</text>
+                  <text y="36" fontSize="11" fill={i === 4 ? "#ef4444" : "#f1f5f9"} fontWeight={i === 4 ? "800" : "600"}>{m.value}</text>
+                </g>
+              ))}
             </g>
-          ))}
 
-          <text x="430" y="270" fontSize="8" fill="rgba(148,163,184,0.5)" fontFamily="JetBrains Mono">usableTime = remaining - (transport + processing + safety)</text>
-          <text x="430" y="290" fontSize="14" fill="#dc2626" fontFamily="Syne" fontWeight="800">= {candidateB.usable} min</text>
-          <rect x="430" y="310" width="300" height="30" rx="8" fill="rgba(220,38,38,0.1)" stroke="rgba(220,38,38,0.3)" strokeWidth="0.5" />
-          <text x="580" y="330" textAnchor="middle" fontSize="11" fill="#dc2626" fontFamily="Inter" fontWeight="600">✗ Would expire before arrival</text>
+            {/* Feasibility tag */}
+            <rect x="560" y="90" width="125" height="30" rx="6" fill="#991b1b" />
+            <text x="622" y="110" textAnchor="middle" fontSize="11" fill="#ffffff" fontWeight="bold">✕ INFEASIBLE</text>
+          </g>
         </g>
       </svg>
-      <div className="scene-caption">
-        <h3>Time-Aware Feasibility Evaluation</h3>
-        <p>The planner calculates <code>usableTimeAfterTransfer = remainingTime − requiredTime</code>. A candidate is feasible only when usable time &gt; 0 and operational checks pass.</p>
+
+      <div className="scene-status-badge">
+        <Timer size={14} className="text-emerald-400" />
+        <span>Stage 6: Time-Aware Verification Complete (Candidate A Dispatched)</span>
       </div>
     </div>
   );
 }
 
-function Scene7Drone({ reducedMotion }: { reducedMotion: boolean }) {
-  const waypoints = [
-    { x: 120, y: 300, label: 'Ramanathapuram GH' },
-    { x: 250, y: 220, label: 'Waypoint A' },
-    { x: 400, y: 180, label: 'Waypoint B' },
-    { x: 550, y: 240, label: 'Waypoint C' },
-    { x: 680, y: 300, label: 'GRH Madurai' },
-  ];
+// ─── Scene 7: Drone Simulation & Delay Recalculation ──────────────────────────
 
-  const pathD = waypoints.map((wp, i) => `${i === 0 ? 'M' : 'L'}${wp.x},${wp.y}`).join(' ');
+function Scene7Drone({ reducedMotion }: { reducedMotion: boolean }) {
+  const [hasDelay, setHasDelay] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setHasDelay(true), 3200);
+    return () => clearTimeout(t);
+  }, []);
+
+  const pathD = "M 120,280 L 260,180 L 480,240 L 720,160";
 
   return (
-    <div className="scene-container">
-      <svg viewBox="0 0 800 400" className="scene-svg">
-        <defs>
-          <linearGradient id="droneSky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#050810" />
-            <stop offset="100%" stopColor="#0d111d" />
-          </linearGradient>
-        </defs>
+    <div className="scene-viewport">
+      <svg viewBox="0 0 880 440" className="scene-svg">
+        <rect width="880" height="440" fill="#060913" />
 
-        <rect width="800" height="400" fill="url(#droneSky)" />
-
-        {/* Grid background */}
+        {/* Flight Waypoint Grid */}
         {[...Array(20)].map((_, i) => (
-          <line key={`h${i}`} x1="0" y1={i * 20} x2="800" y2={i * 20} stroke="rgba(255,255,255,0.02)" />
+          <line key={`x${i}`} x1={i * 44} y1="0" x2={i * 44} y2="440" stroke="rgba(255,255,255,0.02)" />
         ))}
-        {[...Array(40)].map((_, i) => (
-          <line key={`v${i}`} x1={i * 20} y1="0" x2={i * 20} y2="400" stroke="rgba(255,255,255,0.02)" />
+        {[...Array(10)].map((_, i) => (
+          <line key={`y${i}`} x1="0" y1={i * 44} x2="880" y2={i * 44} stroke="rgba(255,255,255,0.02)" />
         ))}
 
-        {/* Route path */}
-        <path d={pathD} fill="none" stroke="rgba(220,38,38,0.3)" strokeWidth="2" strokeDasharray="8 4">
+        {/* Dijkstra Calculated Flight Path */}
+        <path d={pathD} fill="none" stroke="rgba(239,68,68,0.4)" strokeWidth="3" strokeDasharray="10 5">
           {!reducedMotion && (
-            <animate attributeName="stroke-dashoffset" from="200" to="0" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="stroke-dashoffset" from="30" to="0" dur="1.2s" repeatCount="indefinite" />
           )}
         </path>
 
-        {/* Waypoint nodes */}
-        {waypoints.map((wp, i) => (
+        {/* Waypoints */}
+        {[
+          { x: 120, y: 280, label: 'ORIGIN: Ramanathapuram GH' },
+          { x: 260, y: 180, label: 'WAYPOINT 1 (Wind Corridor)' },
+          { x: 480, y: 240, label: 'WAYPOINT 2 (NH-49 Crossing)' },
+          { x: 720, y: 160, label: 'DESTINATION: Madurai GRH' },
+        ].map((wp, i) => (
           <g key={i}>
-            <circle cx={wp.x} cy={wp.y} r={i === 0 || i === waypoints.length - 1 ? 16 : 10}
-              fill={i === 0 ? 'rgba(16,185,129,0.15)' : i === waypoints.length - 1 ? 'rgba(220,38,38,0.15)' : 'rgba(59,130,246,0.1)'}
-              stroke={i === 0 ? 'rgba(16,185,129,0.5)' : i === waypoints.length - 1 ? 'rgba(220,38,38,0.5)' : 'rgba(59,130,246,0.3)'}
-              strokeWidth="1.5" />
-            <text x={wp.x} y={wp.y + 4} textAnchor="middle" fontSize={i === 0 || i === waypoints.length - 1 ? '8' : '7'} fill="rgba(241,245,249,0.8)" fontFamily="Inter" fontWeight="600">
-              {i === 0 ? 'SRC' : i === waypoints.length - 1 ? 'DST' : `W${i}`}
-            </text>
-            <text x={wp.x} y={wp.y + (i === 0 || i === waypoints.length - 1 ? 32 : 26)} textAnchor="middle" fontSize="7" fill="rgba(148,163,184,0.5)" fontFamily="Inter">{wp.label}</text>
+            <circle cx={wp.x} cy={wp.y} r={i === 0 || i === 3 ? 16 : 9} fill={i === 3 ? "rgba(220,38,38,0.3)" : "rgba(34,197,94,0.3)"} stroke={i === 3 ? "#ef4444" : "#22c55e"} strokeWidth="2" />
+            <circle cx={wp.x} cy={wp.y} r="3" fill="#ffffff" />
+            <text x={wp.x} y={wp.y + 30} textAnchor="middle" fontSize="9" fill="#94a3b8" fontWeight="600">{wp.label}</text>
           </g>
         ))}
 
-        {/* Drone */}
-        {!reducedMotion ? (
-          <g>
-            <animateMotion dur="5s" repeatCount="indefinite" path={pathD} rotate="auto" />
-            <polygon points="-8,0 0,-6 8,0 0,6" fill="#dc2626" filter="url(#glow)" />
-            <circle r="2" fill="white" />
+        {/* Active Medical Delivery Drone */}
+        <g>
+          {!reducedMotion ? (
+            <animateMotion dur="6s" repeatCount="indefinite" path={pathD} rotate="auto" />
+          ) : (
+            <animateTransform attributeName="transform" type="translate" to="400, 220" dur="0.01s" fill="freeze" />
+          )}
+
+          {/* Drone Quadcopter Body */}
+          <circle cx="0" cy="0" r="14" fill="#0f172a" stroke="#ef4444" strokeWidth="2" />
+          <line x1="-18" y1="-18" x2="18" y2="18" stroke="#94a3b8" strokeWidth="3" />
+          <line x1="-18" y1="18" x2="18" y2="-18" stroke="#94a3b8" strokeWidth="3" />
+
+          {/* Rotor Blades */}
+          <circle cx="-18" cy="-18" r="8" fill="none" stroke="#38bdf8" strokeWidth="1" strokeDasharray="3 3" />
+          <circle cx="18" cy="-18" r="8" fill="none" stroke="#38bdf8" strokeWidth="1" strokeDasharray="3 3" />
+          <circle cx="-18" cy="18" r="8" fill="none" stroke="#38bdf8" strokeWidth="1" strokeDasharray="3 3" />
+          <circle cx="18" cy="18" r="8" fill="none" stroke="#38bdf8" strokeWidth="1" strokeDasharray="3 3" />
+
+          {/* Payload Box (Blood Cold Box) */}
+          <rect x="-7" y="-7" width="14" height="14" rx="3" fill="#dc2626" />
+          <text x="0" y="3" textAnchor="middle" fontSize="9" fill="#fff" fontWeight="bold">+</text>
+        </g>
+
+        {/* Live Flight Telemetry Box */}
+        <g transform="translate(40, 30)">
+          <rect x="0" y="0" width="270" height="160" rx="12" fill="rgba(15,23,42,0.95)" stroke="rgba(239,68,68,0.3)" strokeWidth="1.5" />
+          <text x="20" y="26" fontSize="11" fill="#f87171" fontWeight="bold">AUTONOMOUS FLIGHT TELEMETRY</text>
+
+          <g transform="translate(20, 48)">
+            {[
+              { label: 'Airspeed', val: '72 km/h' },
+              { label: 'Altitude', val: '120 m AGL' },
+              { label: 'Payload Temp', val: '3.8°C (Compliant)' },
+              { label: 'Battery Reserve', val: '82%' },
+              { label: 'Current ETA', val: hasDelay ? '38 min (Recalculated)' : '25 min' },
+            ].map((t, i) => (
+              <g key={i} transform={`translate(0, ${i * 20})`}>
+                <text fontSize="9" fill="#94a3b8">{t.label}:</text>
+                <text x="230" textAnchor="end" fontSize="10" fill={i === 4 && hasDelay ? '#f59e0b' : '#f1f5f9'} fontWeight="bold">{t.val}</text>
+              </g>
+            ))}
           </g>
-        ) : (
-          <g transform={`translate(${waypoints[2].x}, ${waypoints[2].y - 15})`}>
-            <polygon points="-8,0 0,-6 8,0 0,6" fill="#dc2626" filter="url(#glow)" />
-            <circle r="2" fill="white" />
+        </g>
+
+        {/* Dynamic Transport Delay & Feasibility Recalculation Alert */}
+        {hasDelay && (
+          <g transform="translate(480, 30)">
+            <rect x="0" y="0" width="360" height="120" rx="12" fill="rgba(30,17,10,0.95)" stroke="#f59e0b" strokeWidth="1.5" />
+            <circle cx="30" cy="30" r="12" fill="rgba(245,158,11,0.2)" />
+            <text x="30" y="35" textAnchor="middle" fontSize="12" fill="#f59e0b">⚠️</text>
+            <text x="55" y="34" fontSize="12" fill="#fbbf24" fontWeight="bold">EN-ROUTE DELAY RECALCULATION</text>
+
+            <text x="25" y="65" fontSize="9" fill="#e2e8f0">
+              Weather sensor triggered: 28 km/h headwind (+13 min).
+            </text>
+            <text x="25" y="82" fontSize="9" fill="#94a3b8">
+              Adjusted Usable Margin: 420m − (58m + 30m + 30m) = +302 min.
+            </text>
+            <text x="25" y="102" fontSize="10" fill="#22c55e" fontWeight="bold">
+              ✓ TRANSFER REMAINS TIME-FEASIBLE. CONTINUING MISSION.
+            </text>
           </g>
         )}
-
-        {/* Flight info panel */}
-        <g transform="translate(30, 20)">
-          <rect x="0" y="0" width="200" height="130" rx="10" fill="rgba(13,17,29,0.9)" stroke="rgba(220,38,38,0.2)" strokeWidth="1" />
-          <text x="15" y="22" fontSize="9" fill="#f87171" fontFamily="Inter" fontWeight="700" letterSpacing="0.05em">DRONE FLIGHT TELEMETRY</text>
-          <line x1="15" y1="30" x2="185" y2="30" stroke="rgba(255,255,255,0.06)" />
-          {[
-            { label: 'Route', value: 'Dijkstra — Shortest Path' },
-            { label: 'Distance', value: '35 km (4 waypoints)' },
-            { label: 'Est. Flight Time', value: '35 min @ 60 km/h' },
-            { label: 'Battery', value: '100% (reserve: 20%)' },
-            { label: 'Arrival ETA', value: '09:35 IST' },
-          ].map((item, i) => (
-            <g key={i}>
-              <text x="15" y={46 + i * 18} fontSize="8" fill="rgba(148,163,184,0.5)" fontFamily="Inter">{item.label}</text>
-              <text x="185" y={46 + i * 18} textAnchor="end" fontSize="8" fill="rgba(241,245,249,0.8)" fontFamily="JetBrains Mono">{item.value}</text>
-            </g>
-          ))}
-        </g>
       </svg>
-      <div className="scene-caption">
-        <h3>Drone Route Simulation</h3>
-        <p>The system uses Dijkstra's algorithm to compute the shortest weighted route across the blood bank corridor graph.</p>
-        <p className="scene-disclaimer">This is a software simulation, not an actual medical delivery system.</p>
+
+      <div className="scene-status-badge">
+        <Plane size={14} className="text-sky-400" />
+        <span>Stage 7: Autonomous Delivery &amp; Live Telemetry Feasibility Recalculation</span>
       </div>
     </div>
   );
 }
 
-// ─── Main Homepage Component ─────────────────────────────────────────────────
+// ─── Main Interactive Homepage ───────────────────────────────────────────────
 
 export default function HomePage() {
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = prefersReducedMotion ?? false;
 
-  const [animState, setAnimState] = useState<'idle' | 'playing' | 'paused' | 'completed'>('idle');
-  const [currentScene, setCurrentScene] = useState(0);
+  const [currentScene, setCurrentScene] = useState<number>(0);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [selectedBloodGroup, setSelectedBloodGroup] = useState<string>('O+');
-  const [showStory, setShowStory] = useState(false);
-  const [hasPlayed, setHasPlayed] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = useCallback(() => {
@@ -634,53 +783,45 @@ export default function HomePage() {
     }
   }, []);
 
-  const advanceScene = useCallback(() => {
-    setCurrentScene((prev) => {
-      if (prev >= SCENES.length - 1) {
-        setAnimState('completed');
-        setHasPlayed(true);
-        return prev;
-      }
-      return prev + 1;
-    });
-  }, []);
-
-  // Auto-advance scenes
+  // Advance scene automatically
   useEffect(() => {
-    if (animState !== 'playing') return;
-    clearTimer();
-    const duration = SCENES[currentScene]?.duration || 5000;
-    timerRef.current = setTimeout(advanceScene, reducedMotion ? 1500 : duration);
-    return clearTimer;
-  }, [animState, currentScene, advanceScene, clearTimer, reducedMotion]);
-
-  const handlePlay = () => {
-    if (animState === 'completed') {
-      setCurrentScene(0);
+    if (!isPlaying) {
+      clearTimer();
+      return;
     }
-    setShowStory(true);
-    setAnimState('playing');
-  };
 
+    clearTimer();
+    const duration = SCENES[currentScene]?.duration || 6000;
+    timerRef.current = setTimeout(() => {
+      setCurrentScene((prev) => {
+        if (prev >= SCENES.length - 1) {
+          setIsPlaying(false);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, reducedMotion ? 2000 : duration);
+
+    return clearTimer;
+  }, [isPlaying, currentScene, clearTimer, reducedMotion]);
+
+  const handlePlay = () => setIsPlaying(true);
   const handlePause = () => {
     clearTimer();
-    setAnimState('paused');
+    setIsPlaying(false);
   };
-
   const handleReplay = () => {
     clearTimer();
     setCurrentScene(0);
-    setAnimState('playing');
+    setIsPlaying(true);
   };
-
   const handleSkip = () => {
     clearTimer();
-    setAnimState('completed');
-    setHasPlayed(true);
-    setShowStory(false);
+    setCurrentScene(SCENES.length - 1);
+    setIsPlaying(false);
   };
 
-  const renderScene = () => {
+  const renderActiveScene = () => {
     switch (currentScene) {
       case 0: return <Scene1Emergency reducedMotion={reducedMotion} />;
       case 1: return <Scene2Collection reducedMotion={reducedMotion} />;
@@ -695,28 +836,41 @@ export default function HomePage() {
 
   return (
     <div className="homepage">
+      {/* ─── Top Floating Bar ──────────────────────────────────────────────── */}
+      <header className="home-topbar">
+        <div className="topbar-container">
+          <div className="topbar-brand">
+            <Droplets size={22} className="brand-drop-icon" />
+            <div>
+              <span className="brand-title">Blood-Line Navigator</span>
+              <span className="brand-tag">Autonomous Hematology Logistics</span>
+            </div>
+          </div>
+
+          <nav className="topbar-nav">
+            <a href="#story-stage" className="nav-link">Emergency Story</a>
+            <a href="#how-it-works" className="nav-link">Workflow</a>
+            <a href="#dsa-section" className="nav-link">DSA Engine</a>
+            <Link href="/dashboard" className="enter-btn-top">
+              <span>Enter Dashboard</span>
+              <ArrowRight size={15} />
+            </Link>
+          </nav>
+        </div>
+      </header>
+
       {/* ─── Hero Section ──────────────────────────────────────────────────── */}
-      <section className="hero-section">
+      <section className="hero-section" id="story-stage">
         <div className="hero-bg-effects">
           <div className="hero-grid" />
           <div className="hero-glow hero-glow-1" />
           <div className="hero-glow hero-glow-2" />
         </div>
 
-        <motion.div className="hero-content"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: reducedMotion ? 0.01 : 0.8 }}
-        >
-          {/* Brand */}
-          <div className="hero-brand">
-            <div className="hero-brand-icon">
-              <Droplets size={24} />
-            </div>
-            <div className="hero-brand-text">
-              <span className="hero-brand-name">Blood-Line Navigator</span>
-              <span className="hero-brand-sub">Emergency Hematology Logistics</span>
-            </div>
+        <div className="hero-content">
+          <div className="hero-badge">
+            <Activity size={14} className="text-red-500 animate-pulse" />
+            <span>Time-Aware Blood Expiry Monitoring &amp; Redistribution System</span>
           </div>
 
           <h1 className="hero-headline">
@@ -725,291 +879,215 @@ export default function HomePage() {
           </h1>
 
           <p className="hero-description">
-            Blood Navigator helps participating blood banks monitor expiry risk, evaluate
-            time-feasible redistribution opportunities, and simulate delivery routes to
-            support better inventory coordination.
+            A real-time logistics engine connecting hospital trauma centers, regional blood banks,
+            and autonomous drone corridors to eliminate blood wastage and save critical lives.
           </p>
 
-          <div className="hero-actions">
-            <button className="hero-btn hero-btn-primary" onClick={handlePlay}>
-              <Play size={18} />
-              {hasPlayed ? 'Replay Story' : 'Watch the Story'}
-            </button>
-            <Link href="/dashboard" className="hero-btn hero-btn-secondary">
-              <Activity size={18} />
-              View Live Dashboard
-            </Link>
-          </div>
-
-          <div className="hero-scroll-hint">
-            <span>Scroll to explore</span>
-            <ChevronDown size={16} />
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ─── Animated Story Overlay ────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showStory && animState !== 'completed' && (
-          <motion.div className="story-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            {/* Scene progress */}
-            <div className="story-progress">
-              {SCENES.map((scene, i) => (
-                <div key={scene.id} className={`story-progress-dot ${i === currentScene ? 'active' : ''} ${i < currentScene ? 'done' : ''}`}>
-                  <span className="story-progress-label">{scene.title}</span>
-                </div>
+          {/* ─── THE DIRECTLY EMBEDDED ANIMATED STORY PLAYER ──────────────── */}
+          <div className="story-player-stage">
+            {/* Stage Top Navigation Tabs */}
+            <div className="story-tabs-bar">
+              {SCENES.map((scene, idx) => (
+                <button
+                  key={scene.id}
+                  className={`story-tab ${currentScene === idx ? 'active' : ''}`}
+                  onClick={() => {
+                    setCurrentScene(idx);
+                    setIsPlaying(false);
+                  }}
+                >
+                  <span className="tab-idx">0{idx + 1}</span>
+                  <span className="tab-title">{scene.title}</span>
+                </button>
               ))}
             </div>
 
-            {/* Scene content */}
-            <div className="story-scene-wrapper">
+            {/* If on Scene 3, render interactive Blood Group Picker */}
+            {currentScene === 2 && (
+              <div className="stage-bg-picker">
+                <span>Select Test Phenotype:</span>
+                {BLOOD_GROUPS.map((bg) => (
+                  <button
+                    key={bg}
+                    className={`bg-chip ${selectedBloodGroup === bg ? 'active' : ''}`}
+                    onClick={() => setSelectedBloodGroup(bg)}
+                  >
+                    {bg}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Active Scene Container */}
+            <div className="stage-viewport-box">
               <AnimatePresence mode="wait">
-                <motion.div key={currentScene}
-                  initial={{ opacity: 0, x: 60 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -60 }}
-                  transition={{ duration: reducedMotion ? 0.05 : 0.5 }}
-                  className="story-scene"
+                <motion.div
+                  key={currentScene}
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.02 }}
+                  transition={{ duration: reducedMotion ? 0.01 : 0.35 }}
+                  className="w-full"
                 >
-                  {/* Scene number */}
-                  <div className="story-scene-number">
-                    Scene {currentScene + 1} <span>of {SCENES.length}</span>
-                  </div>
-
-                  {/* Blood group selector for scene 3 */}
-                  {currentScene === 2 && (
-                    <div className="blood-group-selector">
-                      {BLOOD_GROUPS.map((bg) => (
-                        <button key={bg}
-                          className={`bg-select-btn ${selectedBloodGroup === bg ? 'active' : ''}`}
-                          onClick={() => setSelectedBloodGroup(bg)}
-                        >{bg}</button>
-                      ))}
-                    </div>
-                  )}
-
-                  {renderScene()}
+                  {renderActiveScene()}
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            {/* Controls */}
-            <div className="story-controls">
-              {animState === 'playing' ? (
-                <button className="story-ctrl-btn" onClick={handlePause} title="Pause"><Pause size={18} /></button>
-              ) : (
-                <button className="story-ctrl-btn" onClick={handlePlay} title="Play"><Play size={18} /></button>
-              )}
-              <button className="story-ctrl-btn" onClick={handleReplay} title="Replay"><RotateCcw size={18} /></button>
-              <button className="story-ctrl-btn" onClick={handleSkip} title="Skip to application">
-                <SkipForward size={18} />
-                <span>Skip</span>
-              </button>
-              <Link href="/dashboard" className="story-ctrl-btn story-ctrl-continue">
-                <ArrowRight size={18} />
-                <span>Continue to Dashboard</span>
-              </Link>
+            {/* Scene Caption & Context */}
+            <div className="stage-caption-card">
+              <div className="caption-text">
+                <h3>{SCENES[currentScene].title}</h3>
+                <p>{SCENES[currentScene].desc}</p>
+              </div>
+
+              {/* Player Controls Bar */}
+              <div className="stage-controls">
+                {isPlaying ? (
+                  <button className="ctrl-btn" onClick={handlePause} title="Pause Story">
+                    <Pause size={16} />
+                    <span>Pause</span>
+                  </button>
+                ) : (
+                  <button className="ctrl-btn ctrl-btn-active" onClick={handlePlay} title="Play Story">
+                    <Play size={16} />
+                    <span>Play Story</span>
+                  </button>
+                )}
+                <button className="ctrl-btn" onClick={handleReplay} title="Replay from Scene 1">
+                  <RotateCcw size={16} />
+                  <span>Replay</span>
+                </button>
+                <button className="ctrl-btn" onClick={handleSkip} title="Skip to Drone Flight">
+                  <SkipForward size={16} />
+                  <span>Skip</span>
+                </button>
+                <Link href="/dashboard" className="ctrl-btn ctrl-enter-btn">
+                  <span>Enter Blood Navigator</span>
+                  <ArrowRight size={16} />
+                </Link>
+              </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      </section>
 
       {/* ─── Problem & Solution Section ────────────────────────────────────── */}
-      <section className="home-section">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: reducedMotion ? 0.01 : 0.6 }}
-        >
-          <div className="section-tag-home"><Activity size={14} /> The Problem</div>
-          <h2 className="section-title">Blood Has a Shelf Life</h2>
-          <p className="section-text">
-            Blood components have strict expiry windows — platelets last 5 days, packed red blood cells last 35–42 days.
-            When inventory sits unused at one location while another location has unmet demand, units may expire and go to waste.
-            Manual coordination between blood banks is slow and error-prone, especially under time pressure.
-          </p>
+      <section className="home-section" id="how-it-works">
+        <div className="section-tag-home"><Shield size={14} /> The Problem &amp; Solution</div>
+        <h2 className="section-title">Blood Has a Strict Shelf Life</h2>
+        <p className="section-text">
+          Platelets expire in 5 days; packed red blood cells expire in 35–42 days.
+          Without autonomous time-aware coordination, blood expires on hospital shelves while nearby trauma patients face life-threatening shortages.
+        </p>
 
-          <div className="problem-solution-grid">
-            <div className="ps-card">
-              <div className="ps-icon" style={{ background: 'rgba(220,38,38,0.1)', color: '#f87171' }}><Timer size={24} /></div>
-              <h3>Expiry Risk</h3>
-              <p>Units approaching expiry need timely redistribution before they become unusable.</p>
+        <div className="problem-solution-grid">
+          <div className="ps-card">
+            <div className="ps-icon" style={{ background: 'rgba(220,38,38,0.1)', color: '#f87171' }}><Timer size={24} /></div>
+            <h3>Perishable Shelf Life</h3>
+            <p>Units nearing expiry must be dynamically relocated before they degrade into medical waste.</p>
+          </div>
+          <div className="ps-card">
+            <div className="ps-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}><Network size={24} /></div>
+            <h3>Siloed Regional Banks</h3>
+            <p>Facilities lack automated peering to query nearby inventories without manual phone calls.</p>
+          </div>
+          <div className="ps-card">
+            <div className="ps-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#34d399' }}><Plane size={24} /></div>
+            <h3>Transit Time Constraints</h3>
+            <p>Every transport corridor consumes precious shelf life. Our algorithm guarantees only time-feasible transfers are dispatched.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Workflow Section ───────────────────────────────────────────────── */}
+      <section className="home-section">
+        <div className="section-tag-home"><ClipboardList size={14} /> End-to-End Workflow</div>
+        <h2 className="section-title">How Blood Navigator Coordinates Redistribution</h2>
+        <p className="section-text">
+          A six-stage automated pipeline operating across participating healthcare nodes.
+        </p>
+
+        <div className="workflow-steps">
+          {[
+            { num: '01', title: 'Expiry Monitoring', desc: 'Singly Linked Lists and Hash Tables continuously index stock by remaining viability minutes.', icon: Clock },
+            { num: '02', title: 'Request Ingestion', desc: 'Hospitals post emergency blood requisitions handled in strict FIFO arrival order via Queues.', icon: ClipboardList },
+            { num: '03', title: 'Feasibility Verification', desc: 'Mathematical evaluation checks: (Remaining Shelf Life − Transit − Receiving − Safety Margin) > 0.', icon: Timer },
+            { num: '04', title: 'Dijkstra Pathfinding', desc: 'Graph algorithm computes the shortest corridor route across regional blood bank waypoints.', icon: Network },
+            { num: '05', title: 'Delay Recalculation', desc: 'Real-time telemetry rings detect headwinds or traffic, triggering live feasibility re-checks.', icon: Wind },
+            { num: '06', title: 'Receipt & Verification', desc: 'Confirmed transfer is received at the destination and logged with full reversible undo history.', icon: ArrowLeftRight },
+          ].map((item, i) => (
+            <div key={i} className="workflow-step">
+              <span className="workflow-step-num">{item.num}</span>
+              <div className="workflow-step-content">
+                <h4>{item.title}</h4>
+                <p>{item.desc}</p>
+              </div>
             </div>
-            <div className="ps-card">
-              <div className="ps-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}><Network size={24} /></div>
-              <h3>Distributed Inventory</h3>
-              <p>Multiple blood banks hold different stock levels with no automatic visibility across the network.</p>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── DSA Showcase ──────────────────────────────────────────────────── */}
+      <section className="home-section" id="dsa-section">
+        <div className="section-tag-home"><Cpu size={14} /> Academic Engineering Core</div>
+        <h2 className="section-title">Data Structures &amp; Algorithms Embedded</h2>
+        <p className="section-text">
+          Blood Navigator is not merely a user interface — every feature is backed by concrete data structures and algorithmic implementations.
+        </p>
+
+        <div className="dsa-grid">
+          {DSA_FEATURES.map((dsa, i) => (
+            <div key={i} className="dsa-card">
+              <div className="dsa-card-icon" style={{ background: `${dsa.color}15`, color: dsa.color }}>
+                <dsa.icon size={20} />
+              </div>
+              <div className="dsa-card-content">
+                <h4>{dsa.name}</h4>
+                <p>{dsa.usage}</p>
+              </div>
             </div>
-            <div className="ps-card">
-              <div className="ps-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#34d399' }}><Plane size={24} /></div>
-              <h3>Transport Constraints</h3>
-              <p>Every transfer consumes time — transport, receiving, processing, and safety margins must all fit within the remaining shelf life.</p>
-            </div>
-          </div>
-        </motion.div>
+          ))}
+        </div>
       </section>
 
-      {/* ─── How Blood Navigator Works ─────────────────────────────────────── */}
-      <section className="home-section">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: reducedMotion ? 0.01 : 0.6 }}
-        >
-          <div className="section-tag-home"><Shield size={14} /> Solution</div>
-          <h2 className="section-title">How Blood Navigator Works</h2>
-          <p className="section-text">
-            Blood Navigator is a time-aware inventory management and redistribution simulation system
-            that coordinates participating blood banks through a unified workflow.
-          </p>
-
-          <div className="workflow-steps">
-            {[
-              { step: 1, title: 'Monitor Expiry', desc: 'Continuously track blood component shelf life across all participating banks.', icon: Clock },
-              { step: 2, title: 'Identify Requirements', desc: 'Match incoming blood requests against available inventory and expiry status.', icon: ClipboardList },
-              { step: 3, title: 'Evaluate Feasibility', desc: 'Calculate whether redistribution is time-feasible: remainingTime − requiredTime > 0.', icon: Timer },
-              { step: 4, title: 'Calculate Route', desc: 'Use graph algorithms (BFS, DFS, Dijkstra) to find the shortest delivery route.', icon: Network },
-              { step: 5, title: 'Recalculate on Delay', desc: 'If transport conditions change, re-evaluate feasibility and update arrival estimates.', icon: RotateCcw },
-              { step: 6, title: 'Track Transfer', desc: 'Monitor the proposed transfer through dispatch, transit, arrival, and receipt stages.', icon: ArrowLeftRight },
-            ].map((item, i) => (
-              <motion.div key={item.step} className="workflow-step"
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: reducedMotion ? 0 : i * 0.1, duration: reducedMotion ? 0.01 : 0.4 }}
-              >
-                <div className="workflow-step-num">{item.step}</div>
-                <div className="workflow-step-content">
-                  <div className="workflow-step-icon"><item.icon size={18} /></div>
-                  <h3>{item.title}</h3>
-                  <p>{item.desc}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ─── Features Section ──────────────────────────────────────────────── */}
-      <section className="home-section">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: reducedMotion ? 0.01 : 0.6 }}
-        >
-          <div className="section-tag-home"><Layers size={14} /> Features</div>
-          <h2 className="section-title">System Capabilities</h2>
-
-          <div className="features-grid">
-            {[
-              { icon: Database, title: 'Multi-Bank Inventory', desc: 'Manage blood component stock across participating blood banks with real-time expiry tracking.' },
-              { icon: Timer, title: 'Expiry Monitoring', desc: 'Track remaining shelf life with warning and critical thresholds for each unit.' },
-              { icon: FlaskConical, title: 'Feasibility Engine', desc: 'Compute time-feasible redistribution with transport, processing, and safety margins.' },
-              { icon: Plane, title: 'Drone Route Simulation', desc: 'Simulate delivery routes using BFS, DFS, and Dijkstra across a corridor graph.' },
-              { icon: ArrowLeftRight, title: 'Transfer Tracking', desc: 'End-to-end transfer pipeline from proposal to receipt with status monitoring.' },
-              { icon: Cpu, title: 'DSA-Powered Engine', desc: '11 data structures and algorithms from custom implementations integrated into real workflows.' },
-            ].map((feat, i) => (
-              <motion.div key={i} className="feature-card"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: reducedMotion ? 0 : i * 0.08, duration: reducedMotion ? 0.01 : 0.4 }}
-              >
-                <div className="feature-icon"><feat.icon size={22} /></div>
-                <h3>{feat.title}</h3>
-                <p>{feat.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ─── DSA Behind the System ─────────────────────────────────────────── */}
-      <section className="home-section">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: reducedMotion ? 0.01 : 0.6 }}
-        >
-          <div className="section-tag-home"><Cpu size={14} /> DSA Integration</div>
-          <h2 className="section-title">DSA Behind the System</h2>
-          <p className="section-text">
-            Each data structure and algorithm below is implemented from scratch and integrated into the
-            actual Blood Navigator workflows — not as standalone demonstrations, but as the functional
-            engine powering the application.
-          </p>
-
-          <div className="dsa-grid">
-            {DSA_FEATURES.map((dsa, i) => (
-              <motion.div key={i} className="dsa-card"
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: reducedMotion ? 0 : i * 0.05, duration: reducedMotion ? 0.01 : 0.3 }}
-              >
-                <div className="dsa-card-icon" style={{ background: `${dsa.color}15`, color: dsa.color }}>
-                  <dsa.icon size={18} />
-                </div>
-                <div className="dsa-card-content">
-                  <h4>{dsa.name}</h4>
-                  <p>{dsa.usage}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ─── CTA Section ───────────────────────────────────────────────────── */}
+      {/* ─── Prominent CTA Section ─────────────────────────────────────────── */}
       <section className="home-section cta-section">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: reducedMotion ? 0.01 : 0.6 }}
-          className="cta-content"
-        >
-          <div className="cta-brand-icon"><Droplets size={32} /></div>
-          <h2>Explore Blood Navigator</h2>
-          <p>Enter the live dashboard to interact with the full inventory management, redistribution planning, and drone simulation system.</p>
+        <div className="cta-content">
+          <div className="cta-brand-icon"><Droplets size={36} /></div>
+          <h2>Ready to Explore the Live Platform?</h2>
+          <p>
+            Interact with live blood bank inventories, run Dijkstra route simulations,
+            test time-feasibility calculators, and experiment in the interactive DSA Laboratory.
+          </p>
           <div className="cta-actions">
             <Link href="/dashboard" className="hero-btn hero-btn-primary">
               <Activity size={18} />
-              Explore the System
+              <span>Enter Blood Navigator Dashboard</span>
             </Link>
-            <button className="hero-btn hero-btn-secondary" onClick={handlePlay}>
+            <button className="hero-btn hero-btn-secondary" onClick={handleReplay}>
               <Play size={18} />
-              {hasPlayed ? 'Replay Story' : 'Watch the Story'}
+              <span>Watch Story Again</span>
             </button>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* ─── Footer ────────────────────────────────────────────────────────── */}
       <footer className="home-footer">
         <div className="footer-content">
           <div className="footer-brand">
-            <Droplets size={16} />
+            <Droplets size={18} />
             <span>Blood-Line Navigator</span>
           </div>
           <div className="footer-info">
-            <p>Data Structures &amp; Algorithms — Internal Assessment Project</p>
-            <p>SET-2 · Autonomous Hematology Logistics Engine</p>
+            <p>Data Structures &amp; Algorithms — Internal Assessment Project (SET-2)</p>
+            <p>Autonomous Hematology Logistics Engine · Next.js 16 (Turbopack)</p>
           </div>
           <div className="footer-disclaimer">
-            <p><strong>Simulation Disclaimer:</strong> Blood Navigator is an educational software simulation.
-            It does not connect to real blood banks, make clinical decisions, or operate actual delivery systems.
-            All data shown is fictional and for demonstration purposes only. Actual transfusion decisions
-            require appropriate clinical testing and authorized medical staff.</p>
+            <p>
+              <strong>Academic Simulation Notice:</strong> Blood Navigator is an educational software simulation created for the Data Structures and Algorithms internal assessment. It does not connect to real medical hardware, dispense actual blood, or control physical unmanned aerial vehicles. All patient profiles, facility locations, and inventory metrics are simulated.
+            </p>
           </div>
         </div>
       </footer>
