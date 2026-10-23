@@ -149,6 +149,17 @@ export class CircularQueue<T> {
     return true;
   }
 
+  enqueueWithOverwrite(item: T): { overwritten: boolean; evicted: T | null } {
+    let evicted: T | null = null;
+    let overwritten = false;
+    if (this.isFull()) {
+      evicted = this.dequeue();
+      overwritten = true;
+    }
+    this.enqueue(item);
+    return { overwritten, evicted };
+  }
+
   dequeue(): T | null {
     if (this.isEmpty()) {
       this._steps.push({
@@ -528,7 +539,7 @@ export class HashTable<K extends string | number, V> {
     this.buckets = new Array(capacity).fill(null).map(() => []);
   }
 
-  // Custom hash function: sum of character codes modulo capacity
+  // Custom hash function: polynomial rolling hash modulo capacity
   private hash(key: K): number {
     const str = String(key);
     let hash = 0;
@@ -536,6 +547,10 @@ export class HashTable<K extends string | number, V> {
       hash = (hash * 31 + str.charCodeAt(i)) % this._capacity;
     }
     return hash;
+  }
+
+  computeHash(key: K): number {
+    return this.hash(key);
   }
 
   insert(key: K, value: V): void {
@@ -839,6 +854,145 @@ export function mergeSort(arr: number[]): SortResult {
   const sorted = sort([...arr]);
   return { sorted, comparisons, swaps, steps, timeMs: performance.now() - start };
 }
+
+// ─── Generic Record Sorters with deterministic tie-breaking ─────────────────
+
+export interface GenericSortResult<T> {
+  sorted: T[];
+  comparisons: number;
+  swaps: number;
+  timeMs: number;
+  algorithmName: string;
+}
+
+export function bubbleSortBy<T>(
+  arr: T[],
+  keyFn: (item: T) => number,
+  tieBreaker?: (a: T, b: T) => number,
+  descending: boolean = false
+): GenericSortResult<T> {
+  const a = [...arr];
+  let comparisons = 0, swaps = 0;
+  const start = performance.now();
+  for (let i = 0; i < a.length - 1; i++) {
+    for (let j = 0; j < a.length - 1 - i; j++) {
+      comparisons++;
+      const keyA = keyFn(a[j]);
+      const keyB = keyFn(a[j + 1]);
+      let shouldSwap = descending ? keyA < keyB : keyA > keyB;
+      if (keyA === keyB && tieBreaker) {
+        shouldSwap = tieBreaker(a[j], a[j + 1]) > 0;
+      }
+      if (shouldSwap) {
+        [a[j], a[j + 1]] = [a[j + 1], a[j]];
+        swaps++;
+      }
+    }
+  }
+  return { sorted: a, comparisons, swaps, timeMs: performance.now() - start, algorithmName: 'Bubble Sort' };
+}
+
+export function selectionSortBy<T>(
+  arr: T[],
+  keyFn: (item: T) => number,
+  tieBreaker?: (a: T, b: T) => number,
+  descending: boolean = false
+): GenericSortResult<T> {
+  const a = [...arr];
+  let comparisons = 0, swaps = 0;
+  const start = performance.now();
+  for (let i = 0; i < a.length - 1; i++) {
+    let targetIdx = i;
+    for (let j = i + 1; j < a.length; j++) {
+      comparisons++;
+      const keyJ = keyFn(a[j]);
+      const keyTarget = keyFn(a[targetIdx]);
+      let isBetter = descending ? keyJ > keyTarget : keyJ < keyTarget;
+      if (keyJ === keyTarget && tieBreaker) {
+        isBetter = tieBreaker(a[j], a[targetIdx]) < 0;
+      }
+      if (isBetter) targetIdx = j;
+    }
+    if (targetIdx !== i) {
+      [a[i], a[targetIdx]] = [a[targetIdx], a[i]];
+      swaps++;
+    }
+  }
+  return { sorted: a, comparisons, swaps, timeMs: performance.now() - start, algorithmName: 'Selection Sort' };
+}
+
+export function insertionSortBy<T>(
+  arr: T[],
+  keyFn: (item: T) => number,
+  tieBreaker?: (a: T, b: T) => number,
+  descending: boolean = false
+): GenericSortResult<T> {
+  const a = [...arr];
+  let comparisons = 0, swaps = 0;
+  const start = performance.now();
+  for (let i = 1; i < a.length; i++) {
+    const current = a[i];
+    const currentKey = keyFn(current);
+    let j = i - 1;
+    while (j >= 0) {
+      comparisons++;
+      const jKey = keyFn(a[j]);
+      let shouldShift = descending ? jKey < currentKey : jKey > currentKey;
+      if (jKey === currentKey && tieBreaker) {
+        shouldShift = tieBreaker(a[j], current) > 0;
+      }
+      if (!shouldShift) break;
+      a[j + 1] = a[j];
+      swaps++;
+      j--;
+    }
+    a[j + 1] = current;
+  }
+  return { sorted: a, comparisons, swaps, timeMs: performance.now() - start, algorithmName: 'Insertion Sort' };
+}
+
+export function mergeSortBy<T>(
+  arr: T[],
+  keyFn: (item: T) => number,
+  tieBreaker?: (a: T, b: T) => number,
+  descending: boolean = false
+): GenericSortResult<T> {
+  let comparisons = 0, swaps = 0;
+  const start = performance.now();
+
+  function merge(left: T[], right: T[]): T[] {
+    const result: T[] = [];
+    let i = 0, j = 0;
+    while (i < left.length && j < right.length) {
+      comparisons++;
+      const keyL = keyFn(left[i]);
+      const keyR = keyFn(right[j]);
+      let pickLeft = descending ? keyL >= keyR : keyL <= keyR;
+      if (keyL === keyR && tieBreaker) {
+        pickLeft = tieBreaker(left[i], right[j]) <= 0;
+      }
+      if (pickLeft) {
+        result.push(left[i++]);
+      } else {
+        result.push(right[j++]);
+        swaps++;
+      }
+    }
+    return result.concat(left.slice(i)).concat(right.slice(j));
+  }
+
+  function sort(items: T[]): T[] {
+    if (items.length <= 1) return items;
+    const mid = Math.floor(items.length / 2);
+    const left = sort(items.slice(0, mid));
+    const right = sort(items.slice(mid));
+    return merge(left, right);
+  }
+
+  const sorted = sort([...arr]);
+  return { sorted, comparisons, swaps, timeMs: performance.now() - start, algorithmName: 'Merge Sort' };
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 12. GRAPH ALGORITHMS — BFS, DFS, Dijkstra

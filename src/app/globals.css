@@ -1,49 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
-/* ─── Blood Navigator Design System ──────────────────────────────────────── */
-/* Color palette: White/light-grey surfaces, deep burgundy/medical red accents,
-   dark navy typography, restrained green/amber/red status indicators */
+/* ─── Blood Navigator Design System (Original Restored) ───────────────────── */
+/* Color palette: Sleek dark surfaces (#050810, #0d111d), glowing blood red (#dc2626),
+   high-contrast typography (#f1f5f9, #94a3b8), subtle cybernetic grid background */
 
 :root {
-  /* Surfaces */
-  --bg-primary: #FAFBFC;
-  --bg-secondary: #FFFFFF;
-  --bg-tertiary: #F3F4F6;
-  --bg-sidebar: #1B2A4A;
-  --bg-sidebar-hover: #243559;
-  --bg-sidebar-active: #2D4170;
+  /* Blood theme accents */
+  --blood: #dc2626;
+  --blood-dark: #991b1b;
+  --blood-glow: rgba(220, 38, 38, 0.35);
+  --bg: #050810;
+  --bg-card: #0d111d;
+  --bg-card-hover: #131825;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-glow: rgba(220, 38, 38, 0.4);
+  --text: #f1f5f9;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+  --accent-blue: #3b82f6;
+  --accent-cyan: #06b6d4;
+  --accent-green: #10b981;
+  --accent-amber: #f59e0b;
+  --grid-color: rgba(255, 255, 255, 0.03);
+
+  /* Application layout surface mappings */
+  --bg-primary: #050810;
+  --bg-secondary: #0d111d;
+  --bg-tertiary: #131825;
+  --bg-sidebar: rgba(5, 8, 16, 0.95);
+  --bg-sidebar-hover: rgba(255, 255, 255, 0.04);
+  --bg-sidebar-active: rgba(220, 38, 38, 0.12);
   
   /* Typography */
-  --text-primary: #1A2744;
-  --text-secondary: #4A5568;
-  --text-muted: #9CA3AF;
-  --text-sidebar: #CBD5E1;
-  --text-sidebar-active: #FFFFFF;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-sidebar: #64748b;
+  --text-sidebar-active: #f87171;
   
-  /* Accent — Medical / Burgundy Red */
-  --accent-primary: #8B1A2B;
-  --accent-secondary: #A62639;
-  --accent-light: #FDF2F4;
-  --accent-border: #E8C4CA;
+  /* Accent — Blood Red */
+  --accent-primary: #dc2626;
+  --accent-secondary: #ef4444;
+  --accent-light: rgba(220, 38, 38, 0.12);
+  --accent-border: rgba(220, 38, 38, 0.3);
   
-  /* Status Indicators (restrained) */
-  --status-normal: #059669;
-  --status-normal-bg: #ECFDF5;
-  --status-warning: #D97706;
-  --status-warning-bg: #FFFBEB;
-  --status-critical: #DC2626;
-  --status-critical-bg: #FEF2F2;
-  --status-info: #2563EB;
-  --status-info-bg: #EFF6FF;
+  /* Status Indicators */
+  --status-normal: #10b981;
+  --status-normal-bg: rgba(16, 185, 129, 0.15);
+  --status-warning: #f59e0b;
+  --status-warning-bg: rgba(245, 158, 11, 0.15);
+  --status-critical: #dc2626;
+  --status-critical-bg: rgba(220, 38, 38, 0.15);
+  --status-info: #3b82f6;
+  --status-info-bg: rgba(59, 130, 246, 0.15);
   
   /* Borders */
-  --border-light: #E5E7EB;
-  --border-medium: #D1D5DB;
+  --border-light: rgba(255, 255, 255, 0.07);
+  --border-medium: rgba(255, 255, 255, 0.14);
   
   /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.8);
   
   /* Spacing */
   --sidebar-width: 256px;
@@ -59,16 +77,32 @@
 }
 
 html {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background-color: var(--bg);
+  color: var(--text);
   line-height: 1.6;
   min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Original Grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* ─── Layout ─────────────────────────────────────────────────────────────── */
@@ -218,14 +252,25 @@ body {
   padding: 20px 32px 32px;
 }
 
-/* ─── Cards ──────────────────────────────────────────────────────────────── */
+/* ─── Cards (Original Blood-Line Dark Glass) ─────────────────────────────── */
 
 .card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 14px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+  position: relative;
   overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.card-glow {
+  border-color: var(--border-glow);
+  box-shadow: 0 0 40px var(--blood-glow), inset 0 0 40px rgba(220, 38, 38, 0.04);
 }
 
 .card-header {
@@ -258,14 +303,15 @@ body {
 .stat-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 18px 20px;
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .stat-card:hover {
-  box-shadow: var(--shadow-md);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.5);
 }
 
 .stat-card-icon {
@@ -279,10 +325,107 @@ body {
 }
 
 .stat-card-value {
+  font-family: 'Syne', sans-serif;
   font-size: 28px;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-weight: 800;
+  background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   line-height: 1.2;
+}
+
+/* Original Blood Navigator Signature Elements */
+.stat-number {
+  font-family: 'Syne', sans-serif;
+  font-size: 36px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+}
+
+.stat-number-blood {
+  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.section-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f87171;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.blood-chip {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f87171;
+  letter-spacing: -0.5px;
+}
+
+.btn-blood {
+  background: var(--blood);
+  color: white;
+  border: none;
+  padding: 10px 22px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.02em;
+}
+
+.btn-blood:hover {
+  background: #ef4444;
+  box-shadow: 0 0 24px var(--blood-glow);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .stat-card-label {

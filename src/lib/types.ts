@@ -198,3 +198,39 @@ export interface AlgorithmStep {
   path?: string[];
   description: string;
 }
+
+// ─── Real Workflow DSA Integrated Types ─────────────────────────────────────
+
+export interface ReversibleAction {
+  id: string;
+  type: 'update_unit' | 'create_unit' | 'delete_unit';
+  description: string;
+  timestamp: string;
+  unitId: string;
+  previousUnit: InventoryUnit | null;
+  currentUnit: InventoryUnit | null;
+}
+
+export interface ReviewTask {
+  id: string;
+  title: string;
+  description: string;
+  priority: 'emergency' | 'critical' | 'routine';
+  queueEnd: 'front' | 'rear';
+  reason: string;
+  timestamp: string;
+  associatedBankId?: string;
+  associatedUnitId?: string;
+}
+
+export interface DroneTelemetryEvent {
+  id: string;
+  timestamp: string;
+  eventType: 'mission_started' | 'waypoint_reached' | 'eta_updated' | 'battery_changed' | 'transport_delay' | 'feasibility_recalculated';
+  message: string;
+  droneId: string;
+  batteryPercent: number;
+  currentCoord: { x: number; y: number };
+  details?: string;
+}
+

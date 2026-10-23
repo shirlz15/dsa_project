@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "npx tsx src/lib/__tests__/dsa-engine.test.ts"
   },
   "dependencies": {
     "date-fns": "^4.4.0",

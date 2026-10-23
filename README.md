@@ -20,56 +20,51 @@ Time-aware blood expiry monitoring and redistribution planning combined with an 
 
 ---
 
-## Features
+## Features & Workflow Integration
 
-| Feature | Description |
-|---------|-------------|
-| **Dashboard** | Real-time metrics: available units, expiry counts, pending requests, active transfers |
-| **Blood Bank Management** | CRUD operations for simulated blood banks |
-| **Blood Inventory** | Full inventory with filtering by type, status, bank; sorting by expiry/quantity |
-| **Expiry Monitoring** | Live countdown from timestamps with configurable warning/critical thresholds |
-| **Blood Requests** | Create and manage blood component requests with priorities |
-| **Redistribution Planner** | Time-aware feasibility calculation with transparent scoring |
-| **Drone Simulation** | Interactive 2D Canvas simulation with BFS/DFS/Dijkstra pathfinding |
-| **Transfer Tracking** | Full lifecycle tracking with approval/rejection workflow |
-| **Alerts & Notifications** | System alerts based on inventory state, expiry, and events |
-| **Audit Trail** | Complete state change history with before/after values |
-| **DSA Laboratory** | Interactive demonstrations of all 17 DSA topics |
-| **Algorithm Performance Lab** | Benchmarking with actual measurements and visual comparison |
-| **Reports & Export** | CSV export for inventory, requests, and transfers |
-| **Demo Clock** | Advance simulated time to demonstrate expiry changes live |
+Every DSA concept has an active, functional role directly within the core operational workflows:
+
+| Feature Route | Primary DSA Concept | Operational Role in System |
+|---|---|---|
+| **`/inventory`** | **Stack, Hash Table, Linked List, Linear/Binary/Interpolation Search, Sorting** | LIFO undo history; O(1) unit ID lookup with separate chaining; node-chain inventory operations; sorted expiry/ID search probes; 4 sorting algorithms |
+| **`/requests`** | **Queue (FIFO)** | Strict arrival queueing & processing order for emergency blood component requests |
+| **`/drone-simulation`** | **Circular Queue, Graph (BFS, DFS, Dijkstra)** | Bounded ring buffer for live flight telemetry events; optimal shortest route planning over waypoint graph corridors |
+| **`/redistribution`** | **Circular Linked List, Deque, Sorting, Feasibility Engine** | Closed-loop multi-bank review rotation (Bank A → B → C → A); double-ended priority review worklist; time-aware redistribution candidates |
+| **`/audit`** | **Stack** | Stack-based state history tracking with non-destructive undo and audit verification |
+| **`/transfers`** | **State Graph** | Comprehensive lifecycle tracking (Proposed → In-Transit → Delivered/Cancelled) |
+| **`/dashboard`** | **Live Metrics & Visuals** | Operations center with original Blood Navigator KPIs, live status telemetry, and blood inventory breakdown |
 
 ---
 
-## DSA Topics Implemented
+## DSA Topics Implemented & Workflow Mapping
 
-All data structures and algorithms are implemented **from scratch** in TypeScript — no wrappers around built-in `Map`, `Set`, or `Array.sort()`.
+All data structures and algorithms are implemented **from scratch** in TypeScript (`src/lib/dsa-engine.ts`) — with **zero reliance** on built-in wrappers. Each concept is embedded directly into the application's actual workflows rather than isolated in demo playgrounds:
 
-| # | Topic | Application Feature | Complexity |
-|---|-------|---------------------|------------|
-| 1 | **Stack** | Reversible action history (LIFO) | Push/Pop: O(1) |
-| 2 | **Queue** | Request processing order (FIFO) | Enqueue: O(1), Dequeue: O(n) |
-| 3 | **Circular Queue** | Fixed-size event buffer with wraparound | Enqueue/Dequeue: O(1) |
-| 4 | **Linked List** | Dynamic inventory records | Insert head: O(1), Search: O(n) |
-| 5 | **Circular Linked List** | Cyclic blood bank review (A→B→C→A) | Insert: O(n), Traverse cycle: O(n) |
-| 6 | **Deque** | Review task worklist (both-end operations) | Insert/Delete front/rear: O(1) |
-| 7 | **Hash Table** | Inventory/bank ID lookup (separate chaining) | Average lookup: O(1) |
-| 8 | **Linear Search** | Sequential inventory scan | O(n) |
-| 9 | **Binary Search** | Sorted inventory lookup | O(log n) |
-| 10 | **Interpolation Search** | Numeric key search with probe estimation | Avg O(log log n)* |
-| 11 | **Bubble Sort** | Comparison baseline | O(n²) |
-| 12 | **Selection Sort** | Find-minimum approach | O(n²) |
-| 13 | **Insertion Sort** | Build sorted sequence | O(n²) worst, O(n) best |
-| 14 | **Merge Sort** | Divide and conquer | O(n log n) |
-| 15 | **BFS** | Drone route — level-order traversal | O(V + E) |
-| 16 | **DFS** | Drone route — depth-first exploration | O(V + E) |
-| 17 | **Dijkstra** | Drone shortest weighted path | O(V²) |
-
-\* Interpolation search O(log log n) average assumes approximately uniform distribution.
+| # | DSA Topic | System Workflow | Implementation File & Symbol | Complexity | Practical Role |
+|---|---|---|---|---|---|
+| 1 | **Stack** | Inventory Action History & Undo | `src/lib/dsa-engine.ts` → `Stack<T>` | Push: O(1), Pop: O(1) | Records reversible inventory edits; provides "Undo Last Change" with LIFO rollback |
+| 2 | **Queue** | Blood Request Processing | `src/lib/dsa-engine.ts` → `Queue<T>` | Enqueue: O(1), Dequeue: O(n) / O(1) | Enforces arrival sequence for emergency blood requests awaiting fulfillment |
+| 3 | **Circular Queue** | Drone Telemetry Ring Buffer | `src/lib/dsa-engine.ts` → `CircularQueue<T>` | Enqueue/Dequeue: O(1) | Bounded buffer for flight telemetry (waypoints, battery status, delay events) with explicit wraparound |
+| 4 | **Linked List** | Inventory Node Operations | `src/lib/dsa-engine.ts` → `LinkedList<T>` | Insert: O(1), Search/Delete: O(n) | Demonstrates dynamic node chaining and pointer updates for inventory units |
+| 5 | **Circular Linked List** | Participating Bank Review Cycle | `src/lib/dsa-engine.ts` → `CircularLinkedList<T>` | Cycle traversal: O(n) | Executes closed-loop review cycles across blood banks (A → B → C → A) with clean one-cycle termination |
+| 6 | **Deque** | Redistribution Review Worklist | `src/lib/dsa-engine.ts` → `Deque<T>` | Insert/Delete Front/Rear: O(1) | Double-ended queue prioritizing urgent review candidates at the front and routine tasks at the rear |
+| 7 | **Hash Table** | O(1) Unit & Bank ID Lookup | `src/lib/dsa-engine.ts` → `HashTable<K, V>` | Avg: O(1), Worst: O(n) | Hash index with separate chaining collision resolution for fast unit lookup |
+| 8 | **Linear Search** | Unsorted Inventory Discovery | `src/lib/dsa-engine.ts` → `linearSearch()` | O(n) | Scans unsorted collections and records comparison counts |
+| 9 | **Binary Search** | Sorted Expiry & Sequence Search | `src/lib/dsa-engine.ts` → `binarySearch()` | O(log n) | Probes sorted timestamps/keys with low, high, and mid index tracking |
+| 10 | **Interpolation Search** | Sorted Numeric Index Probing | `src/lib/dsa-engine.ts` → `interpolationSearch()` | Avg: O(log log n), Worst: O(n) | Probes uniformly distributed numeric unit sequence IDs with safe zero-division handling |
+| 11 | **Bubble Sort** | Inventory & Expiry Sorting | `src/lib/dsa-engine.ts` → `bubbleSort()` | O(n²) | Baseline comparison sort with deterministic tie-breaking |
+| 12 | **Selection Sort** | Inventory & Expiry Sorting | `src/lib/dsa-engine.ts` → `selectionSort()` | O(n²) | In-place minimum extraction sort |
+| 13 | **Insertion Sort** | Inventory & Expiry Sorting | `src/lib/dsa-engine.ts` → `insertionSort()` | O(n²) worst, O(n) best | Incremental sorted subarray construction |
+| 14 | **Merge Sort** | Expiry & Redistribution Priority | `src/lib/dsa-engine.ts` → `mergeSort()` | O(n log n) | Stable divide-and-conquer sort for expiry timestamps and candidate priorities |
+| 15 | **Breadth-First Search (BFS)** | Drone Operating Area Exploration | `src/lib/dsa-engine.ts` → `bfs()` | O(V + E) | Unweighted shortest path finding across flight waypoints |
+| 16 | **Depth-First Search (DFS)** | Reachability & Corridor Traversal | `src/lib/dsa-engine.ts` → `dfs()` | O(V + E) | Recursive pathway discovery across aerial corridor networks |
+| 17 | **Dijkstra's Algorithm** | Optimal Drone Flight Path | `src/lib/dsa-engine.ts` → `dijkstra()` | O(V²) | Shortest weighted distance calculation determining route duration for time-aware feasibility |
 
 ---
 
 ## Core Feasibility Formula
+
+The central logistics contribution of the system calculates whether an expiring blood unit can be safely relocated to save a patient:
 
 ```
 remainingTime = expiryTimestamp − currentTime
@@ -81,8 +76,11 @@ feasible iff:
   AND unit.status === 'available'
   AND unit.transportEligible === true
   AND bloodType compatibility passes
-  AND deadline is met (if specified)
+  AND destination capacity available
+  AND drone battery reserve >= required flight reserve
 ```
+
+If a simulated transport delay occurs during flight, the system dynamically recalculates `usableTimeAfterTransfer` using the actual Dijkstra flight duration, updating the transfer outcome in real time.
 
 ---
 

@@ -7,7 +7,7 @@ import {
   BloodBank, InventoryUnit, BloodRequest, Transfer, Alert, AuditEvent,
   DroneMission, ExpiryThresholds, DEFAULT_EXPIRY_THRESHOLDS,
   InventoryStatus, RequestStatus, TransferStatus, MissionStatus,
-  FeasibilityResult, GraphNode, GraphEdge, GraphState,
+  FeasibilityResult, GraphNode, GraphEdge, GraphState, ReversibleAction,
 } from './types';
 import {
   DEMO_BLOOD_BANKS, generateDemoInventory, generateDemoRequests, generateDemoAlerts,
@@ -34,9 +34,12 @@ interface BloodNavigatorStore {
 
   // Inventory
   inventory: InventoryUnit[];
+  inventoryActionStack: ReversibleAction[];
   addInventoryUnit: (unit: Omit<InventoryUnit, 'id' | 'lastUpdated'>) => string | null;
   updateInventoryUnit: (id: string, updates: Partial<InventoryUnit>) => void;
   deleteInventoryUnit: (id: string) => void;
+  undoLastInventoryAction: () => { success: boolean; message: string };
+  clearInventoryActionStack: () => void;
 
   // Requests
   requests: BloodRequest[];
@@ -136,22 +139,33 @@ export const useStore = create<BloodNavigatorStore>()(
         bloodBanks: s.bloodBanks.map((b) => b.id === id ? { ...b, ...updates } : b),
       })),
 
-      // Inventory
+      // Inventory & Action History (LIFO Stack)
       inventory: [],
+      inventoryActionStack: [],
       addInventoryUnit: (unit) => {
-        const state = get();
-        // Check for duplicate ID (should not happen with generated IDs, but guard)
-        const id = generateId('inv');
         // Validate timestamps
         if (new Date(unit.expiryTimestamp) <= new Date(unit.collectionTimestamp)) return null;
         if (unit.quantity < 0) return null;
 
+        const id = generateId('inv');
+        const createdUnit: InventoryUnit = { ...unit, id, lastUpdated: new Date().toISOString() };
+        const action: ReversibleAction = {
+          id: generateId('act'),
+          type: 'create_unit',
+          description: `Added unit ${id} (${unit.bloodType} ${unit.componentType}, qty: ${unit.quantity})`,
+          timestamp: new Date().toISOString(),
+          unitId: id,
+          previousUnit: null,
+          currentUnit: createdUnit,
+        };
+
         set((s) => ({
-          inventory: [...s.inventory, { ...unit, id, lastUpdated: new Date().toISOString() }],
+          inventory: [...s.inventory, createdUnit],
+          inventoryActionStack: [...s.inventoryActionStack, action],
           auditTrail: [...s.auditTrail, {
             id: generateId('audit'), entityType: 'inventory', entityId: id,
-            action: 'created', beforeValue: null, afterValue: JSON.stringify({ ...unit, id }),
-            timestamp: new Date().toISOString(), description: `Inventory unit ${id} created`,
+            action: 'created', beforeValue: null, afterValue: JSON.stringify(createdUnit),
+            timestamp: new Date().toISOString(), description: `Inventory unit ${id} created [Stack PUSH]`,
           }],
         }));
         return id;
@@ -163,22 +177,125 @@ export const useStore = create<BloodNavigatorStore>()(
         if (updates.status === 'available' && existing.status === 'expired') return s;
         if (updates.quantity !== undefined && updates.quantity < 0) return s;
 
+        const updatedUnit: InventoryUnit = { ...existing, ...updates, lastUpdated: new Date().toISOString() };
+        const action: ReversibleAction = {
+          id: generateId('act'),
+          type: 'update_unit',
+          description: `Updated unit ${id} [${Object.keys(updates).join(', ')}]`,
+          timestamp: new Date().toISOString(),
+          unitId: id,
+          previousUnit: existing,
+          currentUnit: updatedUnit,
+        };
+
         return {
-          inventory: s.inventory.map((u) =>
-            u.id === id ? { ...u, ...updates, lastUpdated: new Date().toISOString() } : u
-          ),
+          inventory: s.inventory.map((u) => u.id === id ? updatedUnit : u),
+          inventoryActionStack: [...s.inventoryActionStack, action],
           auditTrail: [...s.auditTrail, {
             id: generateId('audit'), entityType: 'inventory', entityId: id,
             action: 'updated', beforeValue: JSON.stringify(existing),
-            afterValue: JSON.stringify({ ...existing, ...updates }),
+            afterValue: JSON.stringify(updatedUnit),
             timestamp: new Date().toISOString(),
-            description: `Inventory unit ${id} updated: ${Object.keys(updates).join(', ')}`,
+            description: `Inventory unit ${id} updated: ${Object.keys(updates).join(', ')} [Stack PUSH]`,
           }],
         };
       }),
-      deleteInventoryUnit: (id) => set((s) => ({
-        inventory: s.inventory.filter((u) => u.id !== id),
-      })),
+      deleteInventoryUnit: (id) => set((s) => {
+        const existing = s.inventory.find((u) => u.id === id);
+        if (!existing) return s;
+
+        // Check if committed to active transfer
+        const relatedActive = s.transfers.some(
+          (t) => t.sourceUnitIds.includes(id) && ['approved', 'dispatched', 'in_transit'].includes(t.status)
+        );
+        if (relatedActive) {
+          return s; // Protected: cannot delete a unit engaged in active transfer
+        }
+
+        const action: ReversibleAction = {
+          id: generateId('act'),
+          type: 'delete_unit',
+          description: `Deleted unit ${id} (${existing.bloodType} ${existing.componentType})`,
+          timestamp: new Date().toISOString(),
+          unitId: id,
+          previousUnit: existing,
+          currentUnit: null,
+        };
+
+        return {
+          inventory: s.inventory.filter((u) => u.id !== id),
+          inventoryActionStack: [...s.inventoryActionStack, action],
+          auditTrail: [...s.auditTrail, {
+            id: generateId('audit'), entityType: 'inventory', entityId: id,
+            action: 'deleted', beforeValue: JSON.stringify(existing), afterValue: null,
+            timestamp: new Date().toISOString(), description: `Inventory unit ${id} deleted [Stack PUSH]`,
+          }],
+        };
+      }),
+      undoLastInventoryAction: () => {
+        const state = get();
+        if (state.inventoryActionStack.length === 0) {
+          return { success: false, message: 'Undo stack is empty (underflow). No reversible actions to pop.' };
+        }
+        const lastAction = state.inventoryActionStack[state.inventoryActionStack.length - 1];
+        const newStack = state.inventoryActionStack.slice(0, -1);
+
+        // Safety enforcement: Do NOT silently reverse approved transfers or units committed to transfer
+        const relatedTransfers = state.transfers.filter(
+          (t) => t.sourceUnitIds.includes(lastAction.unitId) &&
+            ['approved', 'dispatched', 'in_transit', 'arrived', 'received'].includes(t.status)
+        );
+        if (relatedTransfers.length > 0) {
+          return {
+            success: false,
+            message: `Cannot undo edit on unit ${lastAction.unitId}: It is committed to approved transfer ${relatedTransfers[0].id}. Administrative stack cannot silently reverse transfer commitments.`,
+          };
+        }
+
+        if (lastAction.type === 'update_unit' && lastAction.previousUnit) {
+          set((s) => ({
+            inventory: s.inventory.map((u) => u.id === lastAction.unitId ? lastAction.previousUnit! : u),
+            inventoryActionStack: newStack,
+            auditTrail: [...s.auditTrail, {
+              id: generateId('audit'), entityType: 'inventory', entityId: lastAction.unitId,
+              action: 'undo_stack_pop', beforeValue: JSON.stringify(lastAction.currentUnit),
+              afterValue: JSON.stringify(lastAction.previousUnit),
+              timestamp: new Date().toISOString(),
+              description: `STACK POP (LIFO): Undid update on unit ${lastAction.unitId} — restored previous state`,
+            }],
+          }));
+          return { success: true, message: `Reverted update on unit ${lastAction.unitId}` };
+        } else if (lastAction.type === 'create_unit') {
+          set((s) => ({
+            inventory: s.inventory.filter((u) => u.id !== lastAction.unitId),
+            inventoryActionStack: newStack,
+            auditTrail: [...s.auditTrail, {
+              id: generateId('audit'), entityType: 'inventory', entityId: lastAction.unitId,
+              action: 'undo_stack_pop', beforeValue: JSON.stringify(lastAction.currentUnit),
+              afterValue: null,
+              timestamp: new Date().toISOString(),
+              description: `STACK POP (LIFO): Undid creation of unit ${lastAction.unitId} — unit removed`,
+            }],
+          }));
+          return { success: true, message: `Reverted creation of unit ${lastAction.unitId}` };
+        } else if (lastAction.type === 'delete_unit' && lastAction.previousUnit) {
+          set((s) => ({
+            inventory: [...s.inventory, lastAction.previousUnit!],
+            inventoryActionStack: newStack,
+            auditTrail: [...s.auditTrail, {
+              id: generateId('audit'), entityType: 'inventory', entityId: lastAction.unitId,
+              action: 'undo_stack_pop', beforeValue: null,
+              afterValue: JSON.stringify(lastAction.previousUnit),
+              timestamp: new Date().toISOString(),
+              description: `STACK POP (LIFO): Undid deletion of unit ${lastAction.unitId} — unit restored`,
+            }],
+          }));
+          return { success: true, message: `Restored deleted unit ${lastAction.unitId}` };
+        }
+
+        return { success: false, message: 'Unrecognized action type in stack' };
+      },
+      clearInventoryActionStack: () => set({ inventoryActionStack: [] }),
 
       // Requests
       requests: [],
@@ -322,6 +439,7 @@ export const useStore = create<BloodNavigatorStore>()(
             timestamp: new Date().toISOString(), description: 'Demo scenario loaded with sample data',
           }],
           graphState: DEFAULT_GRAPH,
+          inventoryActionStack: [],
           demoLoaded: true,
           demoClockOffset: 0,
           expiryThresholds: DEFAULT_EXPIRY_THRESHOLDS,
@@ -342,6 +460,7 @@ export const useStore = create<BloodNavigatorStore>()(
             timestamp: new Date().toISOString(), description: 'Demo scenario reset to initial state',
           }],
           graphState: DEFAULT_GRAPH,
+          inventoryActionStack: [],
           demoLoaded: true,
           demoClockOffset: 0,
           lastFeasibilityResults: [],
@@ -357,6 +476,7 @@ export const useStore = create<BloodNavigatorStore>()(
       partialize: (state) => ({
         bloodBanks: state.bloodBanks,
         inventory: state.inventory,
+        inventoryActionStack: state.inventoryActionStack,
         requests: state.requests,
         transfers: state.transfers,
         alerts: state.alerts,

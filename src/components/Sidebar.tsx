@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Droplets, Package, Clock, FileText, Route, Plane,
-  ArrowRightLeft, Bell, ScrollText, FlaskConical, BarChart3, FileDown,
+  ArrowRightLeft, Bell, ScrollText, FileDown,
   Network, Info, Settings, Menu, X, Heart
 } from 'lucide-react';
 import { useState } from 'react';
@@ -25,9 +25,6 @@ const NAV_ITEMS = [
   { section: 'Monitoring' },
   { href: '/alerts', label: 'Alerts & Notifications', icon: Bell, badge: true },
   { href: '/audit', label: 'Audit Trail', icon: ScrollText },
-  { section: 'DSA Assessment' },
-  { href: '/dsa-lab', label: 'DSA Laboratory', icon: FlaskConical },
-  { href: '/performance-lab', label: 'Algorithm Performance Lab', icon: BarChart3 },
   { section: 'Reports & Info' },
   { href: '/reports', label: 'Reports & Export', icon: FileDown },
   { href: '/architecture', label: 'Project Architecture', icon: Network },
@@ -57,22 +54,57 @@ export default function Sidebar() {
         {mobileOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
-      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
-        <div className="sidebar-brand">
-          <div className="sidebar-brand-icon">
-            <Heart size={18} />
+      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`} style={{
+        background: 'rgba(5, 8, 16, 0.95)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+        backdropFilter: 'blur(20px)',
+      }}>
+        {/* Original Blood-Line Navigator Brand Header */}
+        <div style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+            <div style={{
+              width: '32px', height: '32px', borderRadius: '8px',
+              background: 'linear-gradient(135deg, #dc2626, #7f1d1d)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 16px rgba(220, 38, 38, 0.5)',
+              flexShrink: 0,
+            }}>
+              <Droplets size={16} color="white" />
+            </div>
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#f1f5f9', letterSpacing: '-0.3px', lineHeight: 1.1 }}>
+                Blood-Line
+              </div>
+              <div style={{ fontSize: '10px', color: '#dc2626', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                Navigator
+              </div>
+            </div>
           </div>
-          <div>
-            <h1>Blood Navigator</h1>
-            <span>DSA Assessment Project</span>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            Emergency Hematology Logistics
           </div>
         </div>
 
-        <nav className="sidebar-nav">
+        {/* Original Live Status Indicator */}
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#34d399' }}>
+            <div className="pulse-dot" />
+            System Live — Realtime Active
+          </div>
+        </div>
+
+        <nav className="sidebar-nav" style={{ padding: '8px 10px' }}>
           {NAV_ITEMS.map((item, i) => {
             if ('section' in item && !('href' in item)) {
               return (
-                <div key={i} className="sidebar-section">
+                <div key={i} className="sidebar-section" style={{
+                  padding: '12px 10px 4px',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: '#475569',
+                }}>
                   {item.section}
                 </div>
               );
@@ -89,8 +121,23 @@ export default function Sidebar() {
                 href={item.href!}
                 className={`sidebar-link ${isActive ? 'active' : ''}`}
                 onClick={() => setMobileOpen(false)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '10px',
+                  marginBottom: '2px',
+                  fontSize: '13px',
+                  fontWeight: isActive ? 600 : 500,
+                  textDecoration: 'none',
+                  background: isActive ? 'rgba(220, 38, 38, 0.12)' : 'transparent',
+                  border: isActive ? '1px solid rgba(220, 38, 38, 0.3)' : '1px solid transparent',
+                  color: isActive ? '#f87171' : '#64748b',
+                  transition: 'all 0.15s ease',
+                }}
               >
-                {Icon && <Icon size={18} />}
+                {Icon && <Icon size={16} />}
                 <span>{item.label}</span>
                 {item.badge && unreadAlerts > 0 && (
                   <span className="sidebar-badge">{unreadAlerts}</span>
@@ -101,11 +148,11 @@ export default function Sidebar() {
         </nav>
 
         <div style={{
-          padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)',
-          fontSize: 11, color: 'var(--text-muted)',
+          padding: '14px 20px', borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+          fontSize: '11px', color: '#475569', lineHeight: 1.5,
         }}>
-          <div>Blood Navigator v1.0</div>
-          <div>DSA Internal Assessment</div>
+          <div>SET-2 · Autonomous Hematology</div>
+          <div style={{ color: '#334155' }}>DSA Assessment Engine Active</div>
         </div>
       </aside>
 
