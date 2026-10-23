@@ -128,7 +128,8 @@ export const useStore = create<BloodNavigatorStore>()(
       // Demo Clock
       demoClockOffset: 0,
       setDemoClockOffset: (offset) => set({ demoClockOffset: offset }),
-      getNow: () => Date.now() + get().demoClockOffset,
+      // In SSR / static prerender, use a fixed timestamp to avoid Next.js unstable value prerender errors
+      getNow: () => (typeof window === 'undefined' ? 1774350000000 : Date.now()) + get().demoClockOffset,
 
       // Blood Banks
       bloodBanks: [],

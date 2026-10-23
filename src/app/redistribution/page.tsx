@@ -49,7 +49,6 @@ export default function RedistributionPage() {
   // Sorting
   const [resultSortAlgo, setResultSortAlgo] = useState<SortAlgo>('merge');
   const [sortField, setSortField] = useState<'usableTime' | 'score' | 'remaining'>('usableTime');
-  const [sortMetrics, setSortMetrics] = useState<{ comparisons: number; timeMs: number; algoName: string } | null>(null);
 
   // ─── DSA 1: Circular Linked List for Periodic Blood Bank Review Cycle ──────
   const bankCircularList = useMemo(() => {
@@ -102,7 +101,7 @@ export default function RedistributionPage() {
       priority: 'emergency',
       queueEnd: 'front',
       reason: 'Urgent expiry threat: Application policy mandates review at FRONT of worklist',
-      timestamp: new Date().toISOString(),
+      timestamp: '2025-01-15T08:00:00.000Z',
       associatedBankId: 'bb-1',
     },
     {
@@ -112,7 +111,7 @@ export default function RedistributionPage() {
       priority: 'emergency',
       queueEnd: 'front',
       reason: 'Trauma priority request: Positioned at FRONT for immediate redistribution match',
-      timestamp: new Date().toISOString(),
+      timestamp: '2025-01-15T08:05:00.000Z',
       associatedBankId: 'bb-5',
     },
     {
@@ -122,7 +121,7 @@ export default function RedistributionPage() {
       priority: 'routine',
       queueEnd: 'rear',
       reason: 'Routine rebalancing: Policy routes non-critical inventory checks to REAR',
-      timestamp: new Date().toISOString(),
+      timestamp: '2025-01-15T07:30:00.000Z',
       associatedBankId: 'bb-2',
     },
     {
@@ -132,7 +131,7 @@ export default function RedistributionPage() {
       priority: 'routine',
       queueEnd: 'rear',
       reason: 'Scheduled weekly check: Placed at REAR of deque',
-      timestamp: new Date().toISOString(),
+      timestamp: '2025-01-15T07:00:00.000Z',
       associatedBankId: 'bb-4',
     },
   ]);
@@ -243,8 +242,8 @@ export default function RedistributionPage() {
   };
 
   // Sort candidate feasibility results using custom sorting algorithm
-  const sortedFeasibilityResults = useMemo(() => {
-    if (lastFeasibilityResults.length === 0) return [];
+  const { sortedFeasibilityResults, sortMetrics } = useMemo(() => {
+    if (lastFeasibilityResults.length === 0) return { sortedFeasibilityResults: [], sortMetrics: null };
 
     const keyFn = (r: FeasibilityResult): number => {
       if (sortField === 'usableTime') return r.usableTimeAfterTransfer;
@@ -275,13 +274,14 @@ export default function RedistributionPage() {
         break;
     }
 
-    setSortMetrics({
-      comparisons: result.comparisons,
-      timeMs: Number(result.timeMs.toFixed(2)),
-      algoName: result.algorithmName,
-    });
-
-    return result.sorted;
+    return {
+      sortedFeasibilityResults: result.sorted,
+      sortMetrics: {
+        comparisons: result.comparisons,
+        timeMs: Number(result.timeMs.toFixed(2)),
+        algoName: result.algorithmName,
+      },
+    };
   }, [lastFeasibilityResults, sortField, resultSortAlgo]);
 
   const handleApprove = (result: FeasibilityResult) => {

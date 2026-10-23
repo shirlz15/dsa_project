@@ -42,6 +42,16 @@ export default function DroneSimulationPage() {
     simStateRef.current = simState;
   }, [simState]);
 
+  const batteryRef = useRef(battery);
+  useEffect(() => {
+    batteryRef.current = battery;
+  }, [battery]);
+
+  const dronePosRef = useRef(dronePos);
+  useEffect(() => {
+    dronePosRef.current = dronePos;
+  }, [dronePos]);
+
   // ─── DSA: Fixed-Capacity Circular Queue for Simulation Telemetry ───────────
   const telemetryQueueRef = useRef(new CircularQueue<DroneTelemetryEvent>(RING_CAPACITY));
   const [telemetrySnapshot, setTelemetrySnapshot] = useState<{
@@ -66,8 +76,8 @@ export default function DroneSimulationPage() {
       eventType,
       message,
       droneId: 'drone-alpha-1',
-      batteryPercent: battery,
-      currentCoord: dronePos,
+      batteryPercent: batteryRef.current,
+      currentCoord: dronePosRef.current,
       details,
     };
 
@@ -80,7 +90,7 @@ export default function DroneSimulationPage() {
       size: q.size(),
       capacity: q.capacity,
     });
-  }, [battery, dronePos]);
+  }, []);
 
   const nonObstacleNodes = graphState.nodes.filter((n) => n.type !== 'obstacle');
 
@@ -100,7 +110,9 @@ export default function DroneSimulationPage() {
     setProgress(0);
 
     const srcNode = graphState.nodes.find((n) => n.id === sourceNode);
-    if (srcNode) setDronePos({ x: srcNode.x, y: srcNode.y });
+    if (srcNode) {
+      setDronePos((prev) => (prev.x === srcNode.x && prev.y === srcNode.y ? prev : { x: srcNode.x, y: srcNode.y }));
+    }
 
     pushTelemetry(
       'feasibility_recalculated',
@@ -109,7 +121,7 @@ export default function DroneSimulationPage() {
     );
   }, [sourceNode, destNode, algorithm, graphState, pushTelemetry]);
 
-  // Initial calculation on load
+  // Recalculate route when endpoints, algorithm, or graph genuinely change
   useEffect(() => {
     handleCalculateRoute();
   }, [handleCalculateRoute]);
