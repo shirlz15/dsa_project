@@ -281,21 +281,25 @@ export default function InventoryPage() {
     ? inventoryActionStack[inventoryActionStack.length - 1]
     : null;
 
+  // Key metrics
+  const totalUnitsCount = useMemo(() => inventory.reduce((acc, u) => acc + u.quantity, 0), [inventory]);
+  const availableUnitsCount = useMemo(() => inventory.filter((u) => u.status === 'available').reduce((acc, u) => acc + u.quantity, 0), [inventory]);
+  const inTransitCount = useMemo(() => inventory.filter((u) => u.status === 'in_transit').reduce((acc, u) => acc + u.quantity, 0), [inventory]);
+  const atRiskCount = useMemo(() => {
+    return inventory.filter((u) => {
+      const remaining = new Date(u.expiryTimestamp).getTime() - now;
+      return remaining <= 48 * 3600000;
+    }).reduce((acc, u) => acc + u.quantity, 0);
+  }, [inventory, now]);
+
   return (
     <>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1>Blood Inventory Management</h1>
-          <p>Time-aware blood unit tracking with integrated LIFO Action History, Linked List representation, and Hash Table search</p>
+          <h1>Blood Inventory</h1>
+          <p>Search, inspect, and manage facility blood units with real-time viability and reversible change tracking.</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            className={`btn ${showDsaInspector ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setShowDsaInspector(!showDsaInspector)}
-          >
-            <Layers size={16} />
-            {showDsaInspector ? 'Hide DSA Inspector' : 'Inspect Integrated DSA'}
-          </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
             className="btn btn-secondary"
             onClick={handleUndo}
@@ -303,7 +307,7 @@ export default function InventoryPage() {
             title={latestStackAction ? `Undo: ${latestStackAction.description}` : 'Stack is empty'}
           >
             <Undo2 size={16} />
-            Undo Last Change ({inventoryActionStack.length})
+            Undo Last Change {inventoryActionStack.length > 0 && `(${inventoryActionStack.length})`}
           </button>
           <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
             <Plus size={16} /> Add Unit
@@ -312,6 +316,32 @@ export default function InventoryPage() {
       </div>
 
       <div className="page-content">
+        {/* ─── Key Operational Metrics ────────────────────────────────────── */}
+        <div className="stats-grid" style={{ marginBottom: 20 }}>
+          <div className="stat-card">
+            <div className="stat-label">Total Units in Network</div>
+            <div className="stat-value">{totalUnitsCount}</div>
+            <div className="stat-desc">{inventory.length} distinct batch records</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Available Stock</div>
+            <div className="stat-value" style={{ color: 'var(--color-success)' }}>{availableUnitsCount}</div>
+            <div className="stat-desc">Ready for release or transfer</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">In Transit / Reserved</div>
+            <div className="stat-value" style={{ color: 'var(--color-info)' }}>{inTransitCount}</div>
+            <div className="stat-desc">En-route or locked for request</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Expiring Soon (≤48h)</div>
+            <div className="stat-value" style={{ color: atRiskCount > 0 ? 'var(--color-warning)' : 'var(--text-muted)' }}>
+              {atRiskCount}
+            </div>
+            <div className="stat-desc">Candidates for urgent redistribution</div>
+          </div>
+        </div>
+
         {/* Undo Notification Banner */}
         {undoNotice && (
           <div
@@ -330,274 +360,6 @@ export default function InventoryPage() {
               <span>{undoNotice.message}</span>
             </div>
             <button className="btn btn-secondary btn-sm" onClick={() => setUndoNotice(null)}>Dismiss</button>
-          </div>
-        )}
-
-        {/* ─── Compact LIFO Action Stack Status Bar ──────────────────────────── */}
-        <div className="card" style={{ marginBottom: 18, padding: '12px 18px', background: 'rgba(255, 255, 255, 0.02)' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ padding: '6px 10px', background: 'var(--color-primary-transparent, rgba(220, 38, 38, 0.1))', borderRadius: 6, color: 'var(--color-primary)' }}>
-                <Layers size={18} />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  LIFO Action Stack: <span style={{ color: 'var(--color-primary)' }}>{inventoryActionStack.length} actions</span>
-                  <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: 'var(--text-secondary)' }}>(Push: O(1), Pop: O(1), Peek: O(1))</span>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {latestStackAction
-                    ? `Top of Stack: "${latestStackAction.description}" (${new Date(latestStackAction.timestamp).toLocaleTimeString()})`
-                    : 'Stack is empty. Edit, add, or delete a unit to push an administrative undo entry.'}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleUndo}
-                disabled={inventoryActionStack.length === 0}
-              >
-                <Undo2 size={14} /> Revert Top Action
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => { setShowDsaInspector(true); setInspectorTab('stack'); }}
-              >
-                Inspect Stack
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ─── Integrated DSA Inspector Panel ────────────────────────────────── */}
-        {showDsaInspector && (
-          <div className="card" style={{ marginBottom: 20, border: '1px solid var(--border-color)' }}>
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Sparkles size={18} color="var(--color-primary)" />
-                <h2 style={{ fontSize: 15 }}>Integrated DSA Inspector & Real-Workflow Verification</h2>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  className={`btn btn-sm ${inspectorTab === 'stack' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setInspectorTab('stack')}
-                >
-                  <Layers size={13} /> Stack (Undo History)
-                </button>
-                <button
-                  className={`btn btn-sm ${inspectorTab === 'hashtable' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setInspectorTab('hashtable')}
-                >
-                  <Hash size={13} /> Hash Table (O(1) Lookup)
-                </button>
-                <button
-                  className={`btn btn-sm ${inspectorTab === 'linkedlist' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setInspectorTab('linkedlist')}
-                >
-                  <LinkIcon size={13} /> Linked List (Node Chain)
-                </button>
-                <button
-                  className={`btn btn-sm ${inspectorTab === 'searches' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setInspectorTab('searches')}
-                >
-                  <Search size={13} /> Search Benchmarks
-                </button>
-              </div>
-            </div>
-
-            <div className="card-body">
-              {/* TAB 1: STACK (Action History) */}
-              {inspectorTab === 'stack' && (
-                <div>
-                  <div style={{ fontSize: 13, marginBottom: 12, color: 'var(--text-secondary)' }}>
-                    <strong>Administrative Action History (Stack):</strong> Every unit addition, field update, and deletion is pushed to an in-memory LIFO stack. The undo operation pops the most recent action and reverts state consistently without affecting approved transfer commitments.
-                  </div>
-                  {inventoryActionStack.length === 0 ? (
-                    <div style={{ padding: 20, textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: 8, fontSize: 13 }}>
-                      No actions recorded on the stack yet. Perform any edit or deletion below to observe stack frames.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {inventoryActionStack.slice().reverse().map((act, index) => (
-                        <div
-                          key={act.id}
-                          style={{
-                            padding: '8px 12px',
-                            background: index === 0 ? 'rgba(220, 38, 38, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-                            borderRadius: 6,
-                            borderLeft: index === 0 ? '3px solid var(--color-primary)' : '1px solid var(--border-color)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: 12,
-                          }}
-                        >
-                          <div>
-                            <span style={{ fontWeight: 600, marginRight: 8 }}>
-                              {index === 0 ? 'TOP [PEEK]' : `FRAME [${inventoryActionStack.length - index - 1}]`}:
-                            </span>
-                            <span>{act.description}</span>
-                            <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 8 }}>
-                              ID: {act.unitId}
-                            </span>
-                          </div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                            {new Date(act.timestamp).toLocaleTimeString()}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 2: HASH TABLE */}
-              {inspectorTab === 'hashtable' && (
-                <div>
-                  <div style={{ fontSize: 13, marginBottom: 12, color: 'var(--text-secondary)' }}>
-                    <strong>Custom Hash Table (Separate Chaining):</strong> Blood units are hashed using a custom polynomial rolling hash (capacity {inventoryHashTable.capacity} buckets). Hash collisions are resolved using linked buckets.
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-                    <input
-                      className="form-input"
-                      placeholder="Enter Unit ID (e.g. pick from table)..."
-                      value={targetQuery}
-                      onChange={(e) => setTargetQuery(e.target.value)}
-                      style={{ maxWidth: 300 }}
-                    />
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleExecuteSearch(targetQuery || (inventory[0]?.id ?? ''))}
-                    >
-                      Hash Lookup
-                    </button>
-                    {inventory.length > 0 && (
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => {
-                          const sampleId = inventory[0].id;
-                          setTargetQuery(sampleId);
-                          handleExecuteSearch(sampleId);
-                        }}
-                      >
-                        Sample First Unit
-                      </button>
-                    )}
-                  </div>
-
-                  {searchTrace && searchTrace.type === 'Hash Table Lookup' && (
-                    <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--border-color)', fontSize: 12 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 8 }}>
-                        <div><strong>Key:</strong> <code>{searchTrace.target}</code></div>
-                        <div><strong>Computed Hash:</strong> <code>{searchTrace.computedHash}</code></div>
-                        <div><strong>Bucket Index:</strong> <code>#{searchTrace.bucketIndex}</code></div>
-                        <div><strong>Comparisons:</strong> <code>{searchTrace.comparisons}</code></div>
-                        <div><strong>Status:</strong> {searchTrace.found ? <span style={{ color: 'var(--color-success)' }}>Found ✓</span> : <span style={{ color: 'var(--color-danger)' }}>Not Found ✗</span>}</div>
-                      </div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{searchTrace.complexity}</div>
-                      {searchTrace.unit && (
-                        <div style={{ marginTop: 8, padding: 8, background: 'rgba(0,0,0,0.2)', borderRadius: 4 }}>
-                          Unit Details: {searchTrace.unit.bloodType} {searchTrace.unit.componentType} | Qty: {searchTrace.unit.quantity} | Bank: {getBankName(searchTrace.unit.bloodBankId)}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 3: LINKED LIST */}
-              {inspectorTab === 'linkedlist' && (
-                <div>
-                  <div style={{ fontSize: 13, marginBottom: 12, color: 'var(--text-secondary)' }}>
-                    <strong>Educational Node-Based Linked List (Sequential Records):</strong> Demonstrates pointer-based traversal and sequential storage across active inventory records.
-                  </div>
-                  <div style={{ overflowX: 'auto', padding: '12px 0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 'max-content' }}>
-                      <span className="badge badge-info" style={{ fontSize: 11 }}>HEAD</span>
-                      {inventory.slice(0, 8).map((u, i) => (
-                        <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <div
-                            style={{
-                              padding: '6px 10px',
-                              background: 'rgba(255, 255, 255, 0.04)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: 6,
-                              fontSize: 11,
-                              textAlign: 'center',
-                            }}
-                          >
-                            <div style={{ fontWeight: 600 }}>{u.id}</div>
-                            <div style={{ color: 'var(--color-primary)' }}>{u.bloodType} · {u.quantity}u</div>
-                          </div>
-                          {i < Math.min(inventory.length, 8) - 1 ? (
-                            <span style={{ color: 'var(--text-muted)', fontWeight: 'bold' }}>→</span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>→ null</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-                    Showing first 8 nodes of {inventory.length} total units. Traversal is O(n), insertion at head is O(1).
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 4: SEARCH BENCHMARKS */}
-              {inspectorTab === 'searches' && (
-                <div>
-                  <div style={{ fontSize: 13, marginBottom: 12, color: 'var(--text-secondary)' }}>
-                    <strong>Search Comparison across Inventory Keys:</strong> Compare Linear Search (unsorted traversal), Binary Search (logarithmic), Interpolation Search (numeric probe), and Hash Table lookup.
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-                    <select
-                      className="form-select"
-                      value={searchAlgo}
-                      onChange={(e) => setSearchAlgo(e.target.value as any)}
-                      style={{ width: 190 }}
-                    >
-                      <option value="hash">Hash Table (O(1))</option>
-                      <option value="binary">Binary Search (O(log n))</option>
-                      <option value="linear">Linear Search (O(n))</option>
-                      <option value="interpolation">Interpolation Search (Numeric)</option>
-                    </select>
-                    <input
-                      className="form-input"
-                      placeholder={searchAlgo === 'interpolation' ? "Numeric Target (e.g. 1025)" : "Target Unit ID..."}
-                      value={targetQuery}
-                      onChange={(e) => setTargetQuery(e.target.value)}
-                      style={{ maxWidth: 220 }}
-                    />
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleExecuteSearch(targetQuery || (inventory[0]?.id ?? ''))}
-                    >
-                      Execute {searchAlgo} Search
-                    </button>
-                  </div>
-
-                  {searchTrace && (
-                    <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--border-color)', fontSize: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <strong>{searchTrace.type}</strong>
-                        <span style={{ color: searchTrace.found ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                          {searchTrace.found ? 'MATCH FOUND ✓' : 'NO MATCH ✗'}
-                        </span>
-                      </div>
-                      <div>Target: <code>{searchTrace.target}</code> | Comparisons Made: <strong>{searchTrace.comparisons}</strong></div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4 }}>{searchTrace.complexity}</div>
-                      {searchTrace.steps && (
-                        <div style={{ marginTop: 8, maxHeight: 120, overflowY: 'auto', background: 'rgba(0,0,0,0.3)', padding: 6, borderRadius: 4, fontFamily: 'monospace', fontSize: 11 }}>
-                          {searchTrace.steps.map((st: string, idx: number) => <div key={idx}>{st}</div>)}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
         )}
 
@@ -861,6 +623,182 @@ export default function InventoryPage() {
             </table>
           </div>
         </div>
+
+        {/* ─── Collapsible: How the algorithm works ────────────────────────── */}
+        <details className="card" style={{ marginTop: 20, border: '1px solid var(--border-color)' }}>
+          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+            <Sparkles size={16} color="var(--color-primary)" />
+            <span>How the algorithm works: Hash Table Lookup, LIFO Action Stack & Sorting</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto', fontWeight: 400 }}>Click to expand operational proof</span>
+          </summary>
+          <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+              <button
+                className={`btn btn-sm ${inspectorTab === 'stack' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setInspectorTab('stack')}
+              >
+                <Layers size={13} /> Stack (Undo History: {inventoryActionStack.length})
+              </button>
+              <button
+                className={`btn btn-sm ${inspectorTab === 'hashtable' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setInspectorTab('hashtable')}
+              >
+                <Hash size={13} /> Hash Table (O(1) Lookup)
+              </button>
+              <button
+                className={`btn btn-sm ${inspectorTab === 'linkedlist' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setInspectorTab('linkedlist')}
+              >
+                <LinkIcon size={13} /> Linked List (Node Chain)
+              </button>
+              <button
+                className={`btn btn-sm ${inspectorTab === 'searches' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setInspectorTab('searches')}
+              >
+                <Search size={13} /> Search Benchmarks
+              </button>
+            </div>
+
+            {/* TAB 1: STACK */}
+            {inspectorTab === 'stack' && (
+              <div>
+                <div style={{ fontSize: 12, marginBottom: 10, color: 'var(--text-secondary)' }}>
+                  <strong>LIFO Action Stack (Reversible Operations):</strong> Each inventory addition, update, or deletion is pushed to an in-memory stack frame with pre-image snapshots. Calling undo pops the top operation in O(1) time without rebuilding the database.
+                </div>
+                {inventoryActionStack.length === 0 ? (
+                  <div style={{ padding: 14, textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: 6, fontSize: 12 }}>
+                    Stack is empty. Add or edit an inventory unit to observe real-time LIFO push operations.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {inventoryActionStack.slice().reverse().map((act, index) => (
+                      <div
+                        key={act.id}
+                        style={{
+                          padding: '6px 12px',
+                          background: index === 0 ? 'rgba(220, 38, 38, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                          borderRadius: 6,
+                          borderLeft: index === 0 ? '3px solid var(--color-primary)' : '1px solid var(--border-color)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          fontSize: 12,
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontWeight: 600, marginRight: 8 }}>{index === 0 ? 'TOP [PEEK]' : `FRAME [${inventoryActionStack.length - index - 1}]`}:</span>
+                          <span>{act.description}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 8 }}>Unit: {act.unitId}</span>
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{new Date(act.timestamp).toLocaleTimeString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: HASH TABLE */}
+            {inspectorTab === 'hashtable' && (
+              <div>
+                <div style={{ fontSize: 12, marginBottom: 10, color: 'var(--text-secondary)' }}>
+                  <strong>Polynomial Rolling Hash Table (Capacity {inventoryHashTable.capacity}):</strong> Resolves collisions via separate chaining buckets. Yields average O(1) unit ID lookup.
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <input
+                    className="form-input"
+                    placeholder="Enter Unit ID (e.g. inv-1)..."
+                    value={targetQuery}
+                    onChange={(e) => setTargetQuery(e.target.value)}
+                    style={{ maxWidth: 240 }}
+                  />
+                  <button className="btn btn-primary btn-sm" onClick={() => handleExecuteSearch(targetQuery || (inventory[0]?.id ?? ''))}>
+                    Lookup Key
+                  </button>
+                  {inventory.length > 0 && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setTargetQuery(inventory[0].id); handleExecuteSearch(inventory[0].id); }}>
+                      Test 1st Unit ({inventory[0].id})
+                    </button>
+                  )}
+                </div>
+                {searchTrace && searchTrace.type === 'Hash Table Lookup' && (
+                  <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 6 }}>
+                      <div><strong>Target:</strong> <code>{searchTrace.target}</code></div>
+                      <div><strong>Hash:</strong> <code>{searchTrace.computedHash}</code></div>
+                      <div><strong>Bucket:</strong> <code>#{searchTrace.bucketIndex}</code></div>
+                      <div><strong>Status:</strong> {searchTrace.found ? <span style={{ color: 'var(--color-success)' }}>Found ✓</span> : <span style={{ color: 'var(--color-danger)' }}>Not Found ✗</span>}</div>
+                    </div>
+                    {searchTrace.unit && (
+                      <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}>
+                        Matched Unit: <strong>{searchTrace.unit.bloodType} {searchTrace.unit.componentType}</strong> ({searchTrace.unit.quantity} units) stored at {getBankName(searchTrace.unit.bloodBankId)}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: LINKED LIST */}
+            {inspectorTab === 'linkedlist' && (
+              <div>
+                <div style={{ fontSize: 12, marginBottom: 10, color: 'var(--text-secondary)' }}>
+                  <strong>Node-Based Linked List (Sequential Traversal):</strong> Units represented as node pointers (Head &rarr; Next &rarr; Tail) for memory-fragmentation-free batch appends.
+                </div>
+                <div style={{ overflowX: 'auto', padding: '8px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 'max-content' }}>
+                    <span className="badge badge-info" style={{ fontSize: 10 }}>HEAD</span>
+                    {inventory.slice(0, 8).map((u, i) => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ padding: '4px 8px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border-color)', borderRadius: 4, fontSize: 11 }}>
+                          <span style={{ fontWeight: 600 }}>{u.id}</span> <span style={{ color: 'var(--color-primary)' }}>({u.bloodType})</span>
+                        </div>
+                        {i < Math.min(inventory.length, 8) - 1 ? (
+                          <span style={{ color: 'var(--text-muted)' }}>→</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>→ null</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: SEARCH BENCHMARKS */}
+            {inspectorTab === 'searches' && (
+              <div>
+                <div style={{ fontSize: 12, marginBottom: 10, color: 'var(--text-secondary)' }}>
+                  <strong>Search Algorithm Comparison:</strong> Benchmark linear vs binary vs interpolation searches across indexed unit records.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                  <select className="form-select" value={searchAlgo} onChange={(e) => setSearchAlgo(e.target.value as any)} style={{ width: 180 }}>
+                    <option value="hash">Hash Table (O(1))</option>
+                    <option value="binary">Binary Search (O(log n))</option>
+                    <option value="linear">Linear Search (O(n))</option>
+                    <option value="interpolation">Interpolation Search</option>
+                  </select>
+                  <input
+                    className="form-input"
+                    placeholder="Search Key..."
+                    value={targetQuery}
+                    onChange={(e) => setTargetQuery(e.target.value)}
+                    style={{ maxWidth: 200 }}
+                  />
+                  <button className="btn btn-primary btn-sm" onClick={() => handleExecuteSearch(targetQuery || (inventory[0]?.id ?? ''))}>
+                    Run Benchmark
+                  </button>
+                </div>
+                {searchTrace && (
+                  <div style={{ padding: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: 12 }}>
+                    <div><strong>Algorithm:</strong> {searchTrace.type} | Comparisons: <strong>{searchTrace.comparisons}</strong></div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4 }}>Complexity: {searchTrace.complexity}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </details>
       </div>
     </>
   );

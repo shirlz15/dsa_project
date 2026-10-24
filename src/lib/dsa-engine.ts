@@ -602,6 +602,10 @@ export class HashTable<K extends string | number, V> {
     return { found: false, value: undefined, bucketIndex: index, comparisons };
   }
 
+  get(key: K): V | undefined {
+    return this.lookup(key).value;
+  }
+
   delete(key: K): boolean {
     const index = this.hash(key);
     const bucket = this.buckets[index];

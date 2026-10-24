@@ -8,10 +8,23 @@ import {
   DroneMission, ExpiryThresholds, DEFAULT_EXPIRY_THRESHOLDS,
   InventoryStatus, RequestStatus, TransferStatus, MissionStatus,
   FeasibilityResult, GraphNode, GraphEdge, GraphState, ReversibleAction,
+  AdminUser,
 } from './types';
 import {
   DEMO_BLOOD_BANKS, generateDemoInventory, generateDemoRequests, generateDemoAlerts,
 } from './demo-data';
+import { syncExpiryAlertsAndRecommendations } from './recommendation-engine';
+
+export const DEFAULT_ADMIN_USER: AdminUser = {
+  id: 'ADMIN-NA-7701',
+  name: 'Dr. Ramesh Kumar',
+  email: 'ramesh.kumar@bloodnavigator.org',
+  role: 'Network Director',
+  facility: 'State Emergency Hematology Logistics Command',
+  badgeNumber: 'BN-DIR-0881',
+  sessionToken: 'SES-DEMO-SIM-9921',
+  authenticatedAt: '2026-10-24T08:00:00.000Z',
+};
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +35,13 @@ function generateId(prefix: string): string {
 // ─── Store Interface ─────────────────────────────────────────────────────────
 
 interface BloodNavigatorStore {
+  // Admin Authentication & Operating Mode
+  currentUser: AdminUser | null;
+  operatingMode: 'demo_simulation' | 'connected_system';
+  loginAdmin: (user: AdminUser) => void;
+  logoutAdmin: () => void;
+  setOperatingMode: (mode: 'demo_simulation' | 'connected_system') => void;
+
   // Demo clock offset (milliseconds added to Date.now() for demo speedup)
   demoClockOffset: number;
   setDemoClockOffset: (offset: number) => void;
@@ -31,6 +51,8 @@ interface BloodNavigatorStore {
   bloodBanks: BloodBank[];
   addBloodBank: (bank: Omit<BloodBank, 'id' | 'createdAt'>) => void;
   updateBloodBank: (id: string, updates: Partial<BloodBank>) => void;
+  deactivateBloodBank: (id: string) => void;
+  activateBloodBank: (id: string) => void;
 
   // Inventory
   inventory: InventoryUnit[];
@@ -53,12 +75,18 @@ interface BloodNavigatorStore {
   updateTransfer: (id: string, updates: Partial<Transfer>) => void;
   approveTransfer: (id: string) => void;
   rejectTransfer: (id: string, reason: string) => void;
+  dispatchTransfer: (id: string) => void;
+  delayTransfer: (id: string, delayMinutes: number) => void;
+  completeTransfer: (id: string) => { success: boolean; message: string };
+  failTransfer: (id: string, reason: string) => void;
 
   // Alerts
   alerts: Alert[];
   addAlert: (alert: Omit<Alert, 'id' | 'createdAt'>) => void;
   markAlertRead: (id: string) => void;
   resolveAlert: (id: string) => void;
+  markAllAlertsRead: () => void;
+  syncExpiryAlerts: () => void;
 
   // Audit Trail
   auditTrail: AuditEvent[];
@@ -125,20 +153,68 @@ const DEFAULT_GRAPH: GraphState = {
 export const useStore = create<BloodNavigatorStore>()(
   persist(
     (set, get) => ({
+      // Admin Authentication & Operating Mode
+      currentUser: DEFAULT_ADMIN_USER,
+      operatingMode: 'demo_simulation',
+      loginAdmin: (user) => set({ currentUser: user }),
+      logoutAdmin: () => set({ currentUser: null }),
+      setOperatingMode: (mode) => set({ operatingMode: mode }),
+
       // Demo Clock
       demoClockOffset: 0,
-      setDemoClockOffset: (offset) => set({ demoClockOffset: offset }),
+      setDemoClockOffset: (offset) => {
+        set({ demoClockOffset: offset });
+        get().syncExpiryAlerts();
+      },
       // In SSR / static prerender, use a fixed timestamp to avoid Next.js unstable value prerender errors
       getNow: () => (typeof window === 'undefined' ? 1774350000000 : Date.now()) + get().demoClockOffset,
 
       // Blood Banks
       bloodBanks: [],
       addBloodBank: (bank) => set((s) => ({
-        bloodBanks: [...s.bloodBanks, { ...bank, id: generateId('bb'), createdAt: new Date().toISOString() }],
+        bloodBanks: [...s.bloodBanks, { ...bank, id: generateId('bb'), status: bank.status || 'active', createdAt: new Date().toISOString() }],
+        auditTrail: [...s.auditTrail, {
+          id: generateId('audit'), entityType: 'blood_bank', entityId: 'new',
+          action: 'created', beforeValue: null, afterValue: bank.name,
+          timestamp: new Date().toISOString(), description: `Blood bank registered: ${bank.name}`,
+        }],
       })),
       updateBloodBank: (id, updates) => set((s) => ({
         bloodBanks: s.bloodBanks.map((b) => b.id === id ? { ...b, ...updates } : b),
+        auditTrail: [...s.auditTrail, {
+          id: generateId('audit'), entityType: 'blood_bank', entityId: id,
+          action: 'updated', beforeValue: null, afterValue: JSON.stringify(updates),
+          timestamp: new Date().toISOString(), description: `Blood bank ${id} details updated`,
+        }],
       })),
+      deactivateBloodBank: (id) => set((s) => {
+        const bank = s.bloodBanks.find((b) => b.id === id);
+        return {
+          bloodBanks: s.bloodBanks.map((b) => b.id === id ? { ...b, status: 'deactivated' as const } : b),
+          auditTrail: [...s.auditTrail, {
+            id: generateId('audit'), entityType: 'blood_bank', entityId: id,
+            action: 'deactivated', beforeValue: bank?.status || 'active', afterValue: 'deactivated',
+            timestamp: new Date().toISOString(), description: `ADMIN ACTION: Blood bank ${bank?.name || id} deactivated from network`,
+          }],
+          alerts: [...s.alerts, {
+            id: generateId('alert'), type: 'invalid_record', severity: 'warning',
+            message: `Blood bank ${bank?.name || id} was deactivated by Network Admin. Transfers to/from this bank are halted.`,
+            linkedRecordId: id, linkedRecordType: 'blood_bank', read: false, resolved: false,
+            createdAt: new Date().toISOString(),
+          }],
+        };
+      }),
+      activateBloodBank: (id) => set((s) => {
+        const bank = s.bloodBanks.find((b) => b.id === id);
+        return {
+          bloodBanks: s.bloodBanks.map((b) => b.id === id ? { ...b, status: 'active' as const } : b),
+          auditTrail: [...s.auditTrail, {
+            id: generateId('audit'), entityType: 'blood_bank', entityId: id,
+            action: 'activated', beforeValue: bank?.status || 'deactivated', afterValue: 'active',
+            timestamp: new Date().toISOString(), description: `ADMIN ACTION: Blood bank ${bank?.name || id} reactivated for operations`,
+          }],
+        };
+      }),
 
       // Inventory & Action History (LIFO Stack)
       inventory: [],
@@ -382,6 +458,206 @@ export const useStore = create<BloodNavigatorStore>()(
           timestamp: new Date().toISOString(), description: `Transfer ${id} rejected: ${reason}`,
         }],
       })),
+      dispatchTransfer: (id) => {
+        const state = get();
+        const transfer = state.transfers.find((t) => t.id === id);
+        if (!transfer || !['proposed', 'approved'].includes(transfer.status)) return;
+
+        const nowIso = new Date().toISOString();
+        const updatedInventory = state.inventory.map((u) => {
+          if (transfer.sourceUnitIds.includes(u.id)) {
+            return { ...u, status: 'in_transit' as InventoryStatus, lastUpdated: nowIso };
+          }
+          return u;
+        });
+
+        set({
+          transfers: state.transfers.map((t) =>
+            t.id === id ? { ...t, status: 'in_transit' as TransferStatus, dispatchedAt: nowIso, lastUpdated: nowIso } : t
+          ),
+          inventory: updatedInventory,
+          auditTrail: [...state.auditTrail, {
+            id: generateId('audit'), entityType: 'transfer', entityId: id,
+            action: 'dispatched', beforeValue: transfer.status, afterValue: 'in_transit',
+            timestamp: nowIso, description: `Transfer ${id} dispatched into transit corridor`,
+          }],
+        });
+      },
+      delayTransfer: (id, delayMinutes) => {
+        const state = get();
+        const transfer = state.transfers.find((t) => t.id === id);
+        if (!transfer) return;
+
+        const now = state.getNow();
+        const nowIso = new Date().toISOString();
+        const newTransportDuration = transfer.transportDuration + delayMinutes;
+        const requiredTime = newTransportDuration + transfer.receivingProcessingDuration + transfer.safetyMargin;
+
+        const sourceUnits = state.inventory.filter((u) => transfer.sourceUnitIds.includes(u.id));
+        let minRemainingMs = Infinity;
+        sourceUnits.forEach((u) => {
+          const rem = new Date(u.expiryTimestamp).getTime() - now;
+          if (rem < minRemainingMs) minRemainingMs = rem;
+        });
+        if (minRemainingMs === Infinity) {
+          minRemainingMs = (transfer.usableTimeAfterTransfer + transfer.transportDuration + transfer.receivingProcessingDuration + transfer.safetyMargin) * 60000;
+        }
+
+        const remainingMinutes = Math.floor(minRemainingMs / 60000);
+        const newUsableTime = remainingMinutes - requiredTime;
+        const isInfeasible = newUsableTime <= 0;
+
+        set({
+          transfers: state.transfers.map((t) =>
+            t.id === id ? {
+              ...t,
+              status: 'delayed' as TransferStatus,
+              transportDuration: newTransportDuration,
+              usableTimeAfterTransfer: newUsableTime,
+              lastUpdated: nowIso,
+            } : t
+          ),
+          auditTrail: [...state.auditTrail, {
+            id: generateId('audit'), entityType: 'transfer', entityId: id,
+            action: 'transport_delay_injected',
+            beforeValue: `${transfer.transportDuration}m (usable: ${transfer.usableTimeAfterTransfer}m)`,
+            afterValue: `${newTransportDuration}m (usable: ${newUsableTime}m)`,
+            timestamp: nowIso,
+            description: `Simulated delay of ${delayMinutes}m injected on transfer ${id}. Usable time after transfer: ${newUsableTime}m. ${isInfeasible ? 'CRITICAL: SHELF-LIFE BREACHED — TRANSFER INFEASIBLE' : 'Feasible within remaining safety margin'}`,
+          }],
+          alerts: [...state.alerts, {
+            id: generateId('alert'),
+            type: isInfeasible ? 'feasibility_failed' : 'transport_delay',
+            severity: isInfeasible ? 'critical' : 'warning',
+            message: isInfeasible
+              ? `Transfer ${id} breached time-feasibility! En-route delay of +${delayMinutes}m reduced usable shelf life to ${newUsableTime}m. Cannot deliver for clinical transfusion.`
+              : `En-route delay of +${delayMinutes}m reported on transfer ${id}. Remaining usable time is ${newUsableTime}m.`,
+            linkedRecordId: id,
+            linkedRecordType: 'transfer',
+            read: false,
+            resolved: false,
+            createdAt: nowIso,
+          }],
+        });
+      },
+      completeTransfer: (id) => {
+        const state = get();
+        const transfer = state.transfers.find((t) => t.id === id);
+        if (!transfer) {
+          return { success: false, message: `Transfer ${id} not found.` };
+        }
+
+        if (transfer.status === 'received') {
+          return { success: false, message: `Transfer ${id} is already received and inventory has already been credited exactly once.` };
+        }
+
+        if (transfer.usableTimeAfterTransfer <= 0) {
+          return {
+            success: false,
+            message: `Transfer ${id} cannot be accepted into destination stock: Usable time after transfer is ${transfer.usableTimeAfterTransfer}m (infeasible). Unit must be quarantined/disposed.`,
+          };
+        }
+
+        const nowIso = new Date().toISOString();
+        const sourceUnits = state.inventory.filter((u) => transfer.sourceUnitIds.includes(u.id));
+
+        const updatedInventory = state.inventory.map((u) => {
+          if (transfer.sourceUnitIds.includes(u.id)) {
+            return { ...u, status: 'used' as InventoryStatus, lastUpdated: nowIso };
+          }
+          return u;
+        });
+
+        const newUnits: InventoryUnit[] = sourceUnits.map((u) => ({
+          id: generateId('inv'),
+          bloodBankId: transfer.destinationBankId,
+          componentType: u.componentType,
+          bloodType: u.bloodType,
+          collectionTimestamp: u.collectionTimestamp,
+          expiryTimestamp: u.expiryTimestamp,
+          quantity: u.quantity,
+          status: 'available',
+          storageTemp: u.storageTemp,
+          transportEligible: true,
+          lastUpdated: nowIso,
+        }));
+
+        const updatedRequests = transfer.requestId
+          ? state.requests.map((r) => r.id === transfer.requestId ? { ...r, status: 'fulfilled' as RequestStatus } : r)
+          : state.requests;
+
+        set({
+          transfers: state.transfers.map((t) =>
+            t.id === id ? {
+              ...t,
+              status: 'received' as TransferStatus,
+              receivedAt: nowIso,
+              arrivedAt: t.arrivedAt || nowIso,
+              lastUpdated: nowIso,
+            } : t
+          ),
+          inventory: [...updatedInventory, ...newUnits],
+          requests: updatedRequests,
+          auditTrail: [
+            ...state.auditTrail,
+            {
+              id: generateId('audit'), entityType: 'transfer', entityId: id,
+              action: 'transfer_completed', beforeValue: transfer.status, afterValue: 'received',
+              timestamp: nowIso,
+              description: `Transfer ${id} completed. ${newUnits.length} unit(s) credited to destination bank inventory exactly once.`,
+            },
+            ...(transfer.requestId ? [{
+              id: generateId('audit'), entityType: 'request', entityId: transfer.requestId,
+              action: 'fulfilled', beforeValue: 'processing', afterValue: 'fulfilled',
+              timestamp: nowIso, description: `Hospital request ${transfer.requestId} fulfilled by transfer ${id}`,
+            }] : []),
+          ],
+          alerts: [...state.alerts, {
+            id: generateId('alert'), type: 'mission_complete', severity: 'info',
+            message: `Transfer ${id} successfully delivered and received into destination bank inventory.`,
+            linkedRecordId: id, linkedRecordType: 'transfer', read: false, resolved: true,
+            createdAt: nowIso,
+          }],
+        });
+
+        return { success: true, message: `Transfer ${id} received. Inventory updated successfully.` };
+      },
+      failTransfer: (id, reason) => {
+        const state = get();
+        const transfer = state.transfers.find((t) => t.id === id);
+        if (!transfer || transfer.status === 'received') return;
+
+        const nowIso = new Date().toISOString();
+        const updatedInventory = state.inventory.map((u) => {
+          if (transfer.sourceUnitIds.includes(u.id)) {
+            const isExp = new Date(u.expiryTimestamp).getTime() < state.getNow();
+            return {
+              ...u,
+              status: isExp ? ('expired' as InventoryStatus) : ('available' as InventoryStatus),
+              lastUpdated: nowIso,
+            };
+          }
+          return u;
+        });
+
+        set({
+          transfers: state.transfers.map((t) =>
+            t.id === id ? { ...t, status: 'failed' as TransferStatus, rejectionReason: reason, lastUpdated: nowIso } : t
+          ),
+          inventory: updatedInventory,
+          auditTrail: [...state.auditTrail, {
+            id: generateId('audit'), entityType: 'transfer', entityId: id,
+            action: 'transfer_failed', beforeValue: transfer.status, afterValue: 'failed',
+            timestamp: nowIso, description: `Transfer ${id} failed: ${reason}. Units released.`,
+          }],
+          alerts: [...state.alerts, {
+            id: generateId('alert'), type: 'feasibility_failed', severity: 'critical',
+            message: `Transfer ${id} failed: ${reason}`,
+            linkedRecordId: id, linkedRecordType: 'transfer', read: false, resolved: false,
+            createdAt: nowIso,
+          }],
+        });
+      },
 
       // Alerts
       alerts: [],
@@ -394,6 +670,14 @@ export const useStore = create<BloodNavigatorStore>()(
       resolveAlert: (id) => set((s) => ({
         alerts: s.alerts.map((a) => a.id === id ? { ...a, resolved: true, resolvedAt: new Date().toISOString() } : a),
       })),
+      markAllAlertsRead: () => set((s) => ({
+        alerts: s.alerts.map((a) => ({ ...a, read: true })),
+      })),
+      syncExpiryAlerts: () => {
+        const state = get();
+        const updatedAlerts = syncExpiryAlertsAndRecommendations(state);
+        set({ alerts: updatedAlerts });
+      },
 
       // Audit Trail
       auditTrail: [],
@@ -418,7 +702,10 @@ export const useStore = create<BloodNavigatorStore>()(
 
       // Expiry Thresholds
       expiryThresholds: DEFAULT_EXPIRY_THRESHOLDS,
-      setExpiryThresholds: (thresholds) => set({ expiryThresholds: thresholds }),
+      setExpiryThresholds: (thresholds) => {
+        set({ expiryThresholds: thresholds });
+        get().syncExpiryAlerts();
+      },
 
       // Graph State
       graphState: DEFAULT_GRAPH,
@@ -427,17 +714,31 @@ export const useStore = create<BloodNavigatorStore>()(
       // Demo
       demoLoaded: false,
       loadDemoScenario: () => {
+        const inventory = generateDemoInventory();
+        const bloodBanks = DEMO_BLOOD_BANKS;
+        const requests = generateDemoRequests();
+        const baseAlerts = generateDemoAlerts();
+        const synchronizedAlerts = syncExpiryAlertsAndRecommendations({
+          inventory,
+          bloodBanks,
+          requests,
+          alerts: baseAlerts,
+          expiryThresholds: DEFAULT_EXPIRY_THRESHOLDS,
+          graphState: DEFAULT_GRAPH,
+          getNow: () => (typeof window === 'undefined' ? 1774350000000 : Date.now()),
+        });
+
         set({
-          bloodBanks: DEMO_BLOOD_BANKS,
-          inventory: generateDemoInventory(),
-          requests: generateDemoRequests(),
-          alerts: generateDemoAlerts(),
+          bloodBanks,
+          inventory,
+          requests,
+          alerts: synchronizedAlerts,
           transfers: [],
           missions: [],
           auditTrail: [{
             id: generateId('audit'), entityType: 'system', entityId: 'demo',
             action: 'demo_loaded', beforeValue: null, afterValue: 'Demo scenario loaded',
-            timestamp: new Date().toISOString(), description: 'Demo scenario loaded with sample data',
+            timestamp: new Date().toISOString(), description: 'Demo scenario loaded with synchronized expiry recommendations',
           }],
           graphState: DEFAULT_GRAPH,
           inventoryActionStack: [],
@@ -448,11 +749,25 @@ export const useStore = create<BloodNavigatorStore>()(
         });
       },
       resetDemo: () => {
+        const inventory = generateDemoInventory();
+        const bloodBanks = DEMO_BLOOD_BANKS;
+        const requests = generateDemoRequests();
+        const baseAlerts = generateDemoAlerts();
+        const synchronizedAlerts = syncExpiryAlertsAndRecommendations({
+          inventory,
+          bloodBanks,
+          requests,
+          alerts: baseAlerts,
+          expiryThresholds: DEFAULT_EXPIRY_THRESHOLDS,
+          graphState: DEFAULT_GRAPH,
+          getNow: () => (typeof window === 'undefined' ? 1774350000000 : Date.now()),
+        });
+
         set({
-          bloodBanks: DEMO_BLOOD_BANKS,
-          inventory: generateDemoInventory(),
-          requests: generateDemoRequests(),
-          alerts: generateDemoAlerts(),
+          bloodBanks,
+          inventory,
+          requests,
+          alerts: synchronizedAlerts,
           transfers: [],
           missions: [],
           auditTrail: [{
@@ -487,6 +802,8 @@ export const useStore = create<BloodNavigatorStore>()(
         graphState: state.graphState,
         demoLoaded: state.demoLoaded,
         demoClockOffset: state.demoClockOffset,
+        currentUser: state.currentUser,
+        operatingMode: state.operatingMode,
       }),
     }
   )

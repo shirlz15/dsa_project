@@ -3,7 +3,7 @@
 import { useStore } from '@/lib/store';
 import {
   FileText, Plus, X, ArrowRight, Play, CheckCircle, Clock,
-  AlertTriangle, Layers, ListOrdered, Sparkles, Filter
+  AlertTriangle, Check, Filter
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
@@ -22,12 +22,11 @@ export default function RequestsPage() {
   const [showForm, setShowForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
-  const [activeQueueTab, setActiveQueueTab] = useState<'all' | 'emergency' | 'urgent' | 'routine'>('all');
   const [lastProcessed, setLastProcessed] = useState<{ id: string; destination: string; type: string } | null>(null);
 
   const [form, setForm] = useState({
     destinationBankId: '', bloodType: 'O+' as BloodType, componentType: 'Packed RBC' as ComponentType,
-    quantity: '1', priority: 'routine' as 'routine' | 'urgent' | 'emergency', neededByHours: '24', notes: '',
+    quantity: '1', priority: 'urgent' as 'routine' | 'urgent' | 'emergency', neededByHours: '24', notes: '',
   });
 
   // ─── DSA: Custom Queues partitioned by Priority Class (FIFO within class) ──
@@ -36,7 +35,6 @@ export default function RequestsPage() {
     const qUrgent = new Queue<BloodRequest>();
     const qRoutine = new Queue<BloodRequest>();
 
-    // Sort chronologically by arrival time (createdAt) to enforce strict FIFO arrival order
     const pendingChronological = requests
       .filter((r) => r.status === 'pending' || r.status === 'processing')
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -66,8 +64,6 @@ export default function RequestsPage() {
 
   const handleProcessNextInQueue = () => {
     if (!nextRequestToProcess) return;
-
-    // Transition status to processing (Dequeue / Servicing step)
     updateRequest(nextRequestToProcess.id, { status: 'processing' });
     setLastProcessed({
       id: nextRequestToProcess.id,
@@ -76,52 +72,46 @@ export default function RequestsPage() {
     });
   };
 
-  const filtered = useMemo(() => {
-    let items = [...requests];
-    if (filterStatus) items = items.filter((r) => r.status === filterStatus);
-    if (filterPriority) items = items.filter((r) => r.priority === filterPriority);
-    return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [requests, filterStatus, filterPriority]);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.destinationBankId) return;
     addRequest({
       destinationBankId: form.destinationBankId,
       bloodType: form.bloodType,
       componentType: form.componentType,
       quantity: parseInt(form.quantity) || 1,
       priority: form.priority,
-      neededBy: new Date(now + parseInt(form.neededByHours || '24') * 3600000).toISOString(),
+      neededBy: new Date(now + parseInt(form.neededByHours) * 3600000).toISOString(),
       notes: form.notes,
     });
+    setForm({
+      destinationBankId: '', bloodType: 'O+', componentType: 'Packed RBC',
+      quantity: '1', priority: 'urgent', neededByHours: '24', notes: '',
+    });
     setShowForm(false);
-    setForm({ destinationBankId: '', bloodType: 'O+', componentType: 'Packed RBC', quantity: '1', priority: 'routine', neededByHours: '24', notes: '' });
   };
 
   const getBankName = (id: string) => bloodBanks.find((b) => b.id === id)?.name || id;
 
   const priorityColors = { emergency: 'badge-critical', urgent: 'badge-warning', routine: 'badge-info' };
 
+  const filteredHistory = useMemo(() => {
+    let list = [...requests].reverse();
+    if (filterStatus) list = list.filter((r) => r.status === filterStatus);
+    if (filterPriority) list = list.filter((r) => r.priority === filterPriority);
+    return list;
+  }, [requests, filterStatus, filterPriority]);
+
   return (
     <>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1>Blood Requests & Processing Queue</h1>
-          <p>Prioritized incoming blood requests serviced via custom FIFO queues with transparent priority classes</p>
+          <h1>Hospital Requests</h1>
+          <p>Receive and prioritize incoming clinical blood requisitions ordered by urgency tier and FIFO arrival.</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            className="btn btn-primary"
-            onClick={handleProcessNextInQueue}
-            disabled={!nextRequestToProcess}
-            title={nextRequestToProcess ? `Process ${nextRequestToProcess.id} (${nextRequestToProcess.priority})` : 'Queue is empty'}
-          >
-            <Play size={16} /> Process Front Request (FIFO)
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowForm(!showForm)}>
-            <Plus size={16} /> New Request (Enqueue)
-          </button>
-        </div>
+        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+          <Plus size={16} /> Create Request
+        </button>
       </div>
 
       <div className="page-content">
@@ -132,20 +122,20 @@ export default function RequestsPage() {
             style={{
               marginBottom: 16,
               padding: '12px 16px',
-              borderLeft: '4px solid var(--color-success)',
+              borderLeft: '4px solid #10b981',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <CheckCircle size={18} color="var(--color-success)" />
+              <CheckCircle size={18} color="#10b981" />
               <span>
-                Processed Front Request <strong>{lastProcessed.id}</strong> ({lastProcessed.type} for {lastProcessed.destination}) — Moved to <em>processing</em> state.
+                Processed Front Request <strong>{lastProcessed.id}</strong> ({lastProcessed.type} for {lastProcessed.destination}) &mdash; Moved to <em>processing</em> state.
               </span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Link href="/redistribution" className="btn btn-primary btn-sm">
+              <Link href={`/redistribution?requestId=${lastProcessed.id}`} className="btn btn-primary btn-sm">
                 Open Redistribution Planner <ArrowRight size={13} />
               </Link>
               <button className="btn btn-secondary btn-sm" onClick={() => setLastProcessed(null)}>Dismiss</button>
@@ -153,181 +143,45 @@ export default function RequestsPage() {
           </div>
         )}
 
-        {/* ─── Integrated Queue Inspector Panel ──────────────────────────────── */}
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ListOrdered size={18} color="var(--color-primary)" />
-              <h2 style={{ fontSize: 15 }}>Incoming Request Queue (FIFO by Urgency Tier)</h2>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                className={`btn btn-sm ${activeQueueTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setActiveQueueTab('all')}
-              >
-                All Enqueued ({unifiedQueueList.length})
-              </button>
-              <button
-                className={`btn btn-sm ${activeQueueTab === 'emergency' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setActiveQueueTab('emergency')}
-              >
-                Emergency ({emergencyQueue.size()})
-              </button>
-              <button
-                className={`btn btn-sm ${activeQueueTab === 'urgent' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setActiveQueueTab('urgent')}
-              >
-                Urgent ({urgentQueue.size()})
-              </button>
-              <button
-                className={`btn btn-sm ${activeQueueTab === 'routine' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setActiveQueueTab('routine')}
-              >
-                Routine ({routineQueue.size()})
-              </button>
-            </div>
+        {/* 3-4 Key Information Metrics */}
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20 }}>
+          <div className="stat-card">
+            <div className="stat-card-value">{requests.length}</div>
+            <div className="stat-card-label">Total Requisitions</div>
           </div>
-
-          <div className="card-body">
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 14 }}>
-              <strong>DSA Queue Integration:</strong> Requests are enqueued in strict chronological arrival order (FIFO) within each priority class. Emergency requests (Tier 1) are serviced before Urgent (Tier 2), which precede Routine (Tier 3). Dequeue operation is O(1) conceptually, returning the front element for redistribution planning.
+          <div className="stat-card">
+            <div className="stat-card-value" style={{ color: '#38bdf8' }}>{unifiedQueueList.length}</div>
+            <div className="stat-card-label">Pending Queue</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-value" style={{ color: '#ef4444' }}>
+              {emergencyQueue.size() + urgentQueue.size()}
             </div>
-
-            {/* Current Front Request Showcase */}
-            <div
-              style={{
-                padding: '12px 16px',
-                background: 'rgba(255,255,255,0.02)',
-                borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                marginBottom: 16,
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  Current Front of Queue (Next to Review / Dequeue)
-                </div>
-                {nextRequestToProcess ? (
-                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span className="badge badge-info" style={{ fontFamily: 'monospace' }}>{nextRequestToProcess.id}</span>
-                    <span className={`badge ${priorityColors[nextRequestToProcess.priority]}`}>{nextRequestToProcess.priority}</span>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>
-                      {nextRequestToProcess.quantity}u {nextRequestToProcess.bloodType} {nextRequestToProcess.componentType}
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      for {getBankName(nextRequestToProcess.destinationBankId)}
-                    </span>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-                    No pending requests in queue. Create a request to enqueue.
-                  </div>
-                )}
-              </div>
-
-              {nextRequestToProcess && (
-                <button className="btn btn-primary btn-sm" onClick={handleProcessNextInQueue}>
-                  <Play size={13} /> Dequeue & Process Front Request
-                </button>
-              )}
+            <div className="stat-card-label">Emergency &amp; Urgent</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-value" style={{ color: nextRequestToProcess ? '#f59e0b' : '#94a3b8', fontSize: '16px', marginTop: 4 }}>
+              {nextRequestToProcess ? nextRequestToProcess.id : 'None'}
             </div>
-
-            {/* Traversal view of the Queue */}
-            {unifiedQueueList.length > 0 ? (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 80 }}>Queue Pos</th>
-                      <th>Priority Tier</th>
-                      <th>Request ID</th>
-                      <th>Destination</th>
-                      <th>Component</th>
-                      <th>Qty</th>
-                      <th>Enqueued At</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {unifiedQueueList
-                      .filter((item) => activeQueueTab === 'all' || item.request.priority === activeQueueTab)
-                      .map((item) => {
-                        const isFront = item.request.id === nextRequestToProcess?.id;
-                        return (
-                          <tr key={item.request.id} style={{ background: isFront ? 'rgba(220, 38, 38, 0.05)' : undefined }}>
-                            <td style={{ fontWeight: 600 }}>
-                              {isFront ? (
-                                <span className="badge badge-critical" style={{ fontSize: 10 }}>#1 FRONT</span>
-                              ) : (
-                                `#${item.queuePosition}`
-                              )}
-                            </td>
-                            <td><span className={`badge ${priorityColors[item.request.priority]}`}>{item.tier}</span></td>
-                            <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{item.request.id}</td>
-                            <td style={{ fontSize: 12 }}>{getBankName(item.request.destinationBankId)}</td>
-                            <td style={{ fontSize: 12 }}>{item.request.bloodType} {item.request.componentType}</td>
-                            <td style={{ fontWeight: 600 }}>{item.request.quantity}</td>
-                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(item.request.createdAt).toLocaleTimeString()}</td>
-                            <td>
-                              <Link
-                                href="/redistribution"
-                                className="btn btn-secondary btn-sm"
-                                style={{ fontSize: 11, padding: '2px 8px' }}
-                              >
-                                Match in Planner <ArrowRight size={10} />
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 12 }}>
-                Queue is empty.
-              </div>
-            )}
+            <div className="stat-card-label">Front of Priority Queue</div>
           </div>
         </div>
 
-        {/* ─── Standard Toolbar & All Requests Table ────────────────────────── */}
-        <div className="toolbar" style={{ marginTop: 20 }}>
-          <select className="form-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ width: 150 }}>
-            <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="matched">Matched</option>
-            <option value="fulfilled">Fulfilled</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <select className="form-select" value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} style={{ width: 150 }}>
-            <option value="">All Priorities</option>
-            <option value="emergency">Emergency</option>
-            <option value="urgent">Urgent</option>
-            <option value="routine">Routine</option>
-          </select>
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-            <Plus size={16} /> New Request (Enqueue)
-          </button>
-        </div>
-
+        {/* Create Request Form Drawer */}
         {showForm && (
-          <div className="card" style={{ marginBottom: 20 }}>
-            <div className="card-header"><h2>Create Blood Request (Enqueues into FIFO Queue)</h2></div>
+          <div className="card" style={{ marginBottom: 20, border: '1px solid rgba(220, 38, 38, 0.4)' }}>
+            <div className="card-header">
+              <h2>Register New Hospital Blood Requisition</h2>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Enqueues request into priority FIFO queue</span>
+            </div>
             <div className="card-body">
               <form onSubmit={handleSubmit}>
                 <div className="grid-3">
                   <div className="form-group">
-                    <label className="form-label">Destination Blood Bank</label>
+                    <label className="form-label">Destination Facility</label>
                     <select className="form-select" value={form.destinationBankId} onChange={(e) => setForm({ ...form, destinationBankId: e.target.value })} required>
-                      <option value="">Select blood bank...</option>
-                      {bloodBanks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      <option value="">Select facility...</option>
+                      {bloodBanks.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.city})</option>)}
                     </select>
                   </div>
                   <div className="form-group">
@@ -343,27 +197,27 @@ export default function RequestsPage() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Quantity</label>
-                    <input className="form-input" type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                    <label className="form-label">Quantity (Units)</label>
+                    <input className="form-input" type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Priority Tier</label>
                     <select className="form-select" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as 'routine' | 'urgent' | 'emergency' })}>
-                      <option value="routine">Routine (Tier 3 FIFO)</option>
-                      <option value="urgent">Urgent (Tier 2 FIFO)</option>
                       <option value="emergency">Emergency (Tier 1 FIFO)</option>
+                      <option value="urgent">Urgent (Tier 2 FIFO)</option>
+                      <option value="routine">Routine (Tier 3 FIFO)</option>
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Needed Within (hours)</label>
-                    <input className="form-input" type="number" min="1" value={form.neededByHours} onChange={(e) => setForm({ ...form, neededByHours: e.target.value })} />
+                    <label className="form-label">Needed Within (Hours)</label>
+                    <input className="form-input" type="number" min="1" value={form.neededByHours} onChange={(e) => setForm({ ...form, neededByHours: e.target.value })} required />
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Notes</label>
-                  <textarea className="form-input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                  <label className="form-label">Clinical Indication &amp; Notes</label>
+                  <input className="form-input" placeholder="e.g. Acute surgical hemorrhage, trauma ICU transfusion" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                   <button type="submit" className="btn btn-primary">Enqueue Request</button>
                   <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
                 </div>
@@ -372,55 +226,149 @@ export default function RequestsPage() {
           </div>
         )}
 
-        <div className="card">
-          <div className="card-header"><h2>All Historical & Active Requests ({filtered.length})</h2></div>
-          <div className="card-body" style={{ padding: 0, overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Destination</th>
-                  <th>Type</th>
-                  <th>Component</th>
-                  <th>Qty</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Needed By</th>
-                  <th>Notes</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.id}</td>
-                    <td style={{ fontSize: 12 }}>{getBankName(r.destinationBankId)}</td>
-                    <td><span className="badge badge-info">{r.bloodType}</span></td>
-                    <td style={{ fontSize: 12 }}>{r.componentType}</td>
-                    <td style={{ fontWeight: 600 }}>{r.quantity}</td>
-                    <td><span className={`badge ${priorityColors[r.priority]}`}>{r.priority}</span></td>
-                    <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
-                    <td style={{ fontSize: 11 }}>{new Date(r.neededBy).toLocaleString()}</td>
-                    <td style={{ fontSize: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.notes || '—'}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {(r.status === 'pending' || r.status === 'processing') && (
-                          <>
-                            <Link href="/redistribution" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}>
-                              Plan
-                            </Link>
-                            <button className="btn btn-danger btn-sm" onClick={() => cancelRequest(r.id)}><X size={12} /></button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && <tr><td colSpan={10}><div className="empty-state"><p>No requests found</p></div></td></tr>}
-              </tbody>
-            </table>
+        {/* Main Working Area: One Clear Active Request Card */}
+        <div className="card" style={{ marginBottom: 20, border: nextRequestToProcess ? '1px solid rgba(220, 38, 38, 0.4)' : undefined }}>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FileText size={16} color="#f87171" />
+              <h2 style={{ fontSize: 14 }}>Active Request Front of Priority Queue</h2>
+            </div>
+            {nextRequestToProcess && (
+              <span className={`badge ${priorityColors[nextRequestToProcess.priority]}`} style={{ textTransform: 'uppercase', fontWeight: 800 }}>
+                {nextRequestToProcess.priority} (Tier 1 Priority)
+              </span>
+            )}
+          </div>
+          <div className="card-body">
+            {nextRequestToProcess ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: '18px', fontWeight: 800, color: '#f87171' }}>{nextRequestToProcess.bloodType}</span>
+                    <span style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9' }}>{nextRequestToProcess.componentType}</span>
+                    <span style={{ background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', padding: '2px 8px', fontSize: '12px', fontWeight: 700 }}>
+                      {nextRequestToProcess.quantity} units requested
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                    <div><strong>Destination Facility:</strong> {getBankName(nextRequestToProcess.destinationBankId)} ({nextRequestToProcess.destinationBankId})</div>
+                    <div><strong>Needed By:</strong> {new Date(nextRequestToProcess.neededBy).toLocaleString()} &bull; <strong>Clinical Notes:</strong> {nextRequestToProcess.notes || 'Routine restocking'}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <button className="btn btn-secondary" onClick={handleProcessNextInQueue}>
+                    <Play size={14} /> Dequeue to Processing
+                  </button>
+                  <Link
+                    href={`/redistribution?requestId=${nextRequestToProcess.id}`}
+                    className="btn btn-primary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+                  >
+                    <span>Match in Redistribution Planner</span>
+                    <ArrowRight size={14} />
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b' }}>
+                <CheckCircle size={32} style={{ margin: '0 auto 8px', color: '#10b981', opacity: 0.8 }} />
+                <h3 style={{ fontSize: '15px', color: '#f1f5f9', margin: '0 0 4px' }}>All Requisitions Serviced</h3>
+                <p style={{ fontSize: '12px', margin: 0 }}>No pending hospital orders in the active queue.</p>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Collapsible Request Queue & History (Requirement 6) */}
+        <details className="card" open style={{ marginBottom: 20 }}>
+          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: '#f1f5f9', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+            Request Queue &amp; History ({filteredHistory.length} total)
+          </summary>
+          <div className="card-body" style={{ padding: 0 }}>
+            {/* Filter toolbar */}
+            <div style={{ padding: '10px 16px', display: 'flex', gap: 10, borderBottom: '1px solid rgba(255, 255, 255, 0.04)', background: 'rgba(255, 255, 255, 0.01)' }}>
+              <select className="form-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ width: 140, fontSize: 11, height: 30 }}>
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="matched">Matched</option>
+                <option value="fulfilled">Fulfilled</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <select className="form-select" value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} style={{ width: 140, fontSize: 11, height: 30 }}>
+                <option value="">All Priorities</option>
+                <option value="emergency">Emergency</option>
+                <option value="urgent">Urgent</option>
+                <option value="routine">Routine</option>
+              </select>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Destination</th>
+                    <th>Group</th>
+                    <th>Component</th>
+                    <th>Qty</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Needed By</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredHistory.map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.id}</td>
+                      <td style={{ fontSize: 12 }}>{getBankName(r.destinationBankId)}</td>
+                      <td><span className="badge badge-info">{r.bloodType}</span></td>
+                      <td style={{ fontSize: 12 }}>{r.componentType}</td>
+                      <td style={{ fontWeight: 600 }}>{r.quantity}</td>
+                      <td><span className={`badge ${priorityColors[r.priority]}`}>{r.priority}</span></td>
+                      <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
+                      <td style={{ fontSize: 11 }}>{new Date(r.neededBy).toLocaleString()}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {(r.status === 'pending' || r.status === 'processing') && (
+                            <>
+                              <Link href={`/redistribution?requestId=${r.id}`} className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}>
+                                Plan
+                              </Link>
+                              <button className="btn btn-danger btn-sm" onClick={() => cancelRequest(r.id)} title="Cancel request">
+                                <X size={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredHistory.length === 0 && (
+                    <tr><td colSpan={9} className="empty-state"><p>No requests found matching filter</p></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        {/* Collapsible How the Algorithm Works Section (Requirement 7) */}
+        <details className="card" style={{ padding: '12px 18px', background: 'rgba(255, 255, 255, 0.02)' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: '12px', color: '#94a3b8' }}>
+            How the algorithm works: Priority Queue &amp; FIFO Processing
+          </summary>
+          <div style={{ marginTop: 12, fontSize: '11px', color: '#cbd5e1', lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>Multi-Tier Priority Queue:</strong> Requisitions are partitioned into 3 urgency queues: Tier 1 (Emergency, e.g. trauma), Tier 2 (Urgent, e.g. acute scheduled surgery), and Tier 3 (Routine restocking).
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Strict FIFO In-Class Servicing:</strong> Within any single priority class, requests are handled strictly in chronological arrival order (FIFO) using custom pointer queues. This guarantees equitable allocation without starvation among patients of identical urgency.
+            </p>
+          </div>
+        </details>
       </div>
     </>
   );

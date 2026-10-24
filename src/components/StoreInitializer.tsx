@@ -13,6 +13,8 @@ export default function StoreInitializer({ children }: { children: React.ReactNo
     // Auto-load demo scenario on first client mount if not already loaded
     if (!demoLoaded) {
       loadDemoScenario();
+    } else {
+      useStore.getState().syncExpiryAlerts();
     }
   }, [demoLoaded, loadDemoScenario]);
 

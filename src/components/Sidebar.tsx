@@ -5,31 +5,28 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Droplets, Package, Clock, FileText, Route, Plane,
   ArrowRightLeft, Bell, ScrollText, FileDown,
-  Network, Info, Settings, Menu, X, Heart
+  Network, Info, Settings, Menu, X, Heart, Play
 } from 'lucide-react';
 import { useState } from 'react';
 import { useStore } from '@/lib/store';
 
 const NAV_ITEMS = [
-  { section: 'Overview' },
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { section: 'Blood Management' },
-  { href: '/blood-banks', label: 'Blood Bank Management', icon: Droplets },
+  { section: 'Operations' },
+  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/blood-banks', label: 'Blood Banks', icon: Droplets },
   { href: '/inventory', label: 'Blood Inventory', icon: Package },
   { href: '/expiry-monitoring', label: 'Expiry Monitoring', icon: Clock },
-  { href: '/requests', label: 'Blood Requests', icon: FileText },
-  { section: 'Logistics' },
+  { href: '/requests', label: 'Hospital Requests', icon: FileText },
   { href: '/redistribution', label: 'Redistribution Planner', icon: Route },
-  { href: '/drone-simulation', label: 'Drone Simulation', icon: Plane },
+  { href: '/drone-simulation', label: 'Drone Operations', icon: Plane },
   { href: '/transfers', label: 'Transfer Tracking', icon: ArrowRightLeft },
-  { section: 'Monitoring' },
-  { href: '/alerts', label: 'Alerts & Notifications', icon: Bell, badge: true },
+  { href: '/alerts', label: 'Alerts & Reports', icon: Bell, badge: true },
+  { section: 'System & Tools' },
   { href: '/audit', label: 'Audit Trail', icon: ScrollText },
-  { section: 'Reports & Info' },
-  { href: '/reports', label: 'Reports & Export', icon: FileDown },
-  { href: '/architecture', label: 'Project Architecture', icon: Network },
-  { href: '/about', label: 'Project Information', icon: Info },
-  { href: '/settings', label: 'Settings & Demo Controls', icon: Settings },
+  { href: '/reports', label: 'Compliance Reports', icon: FileDown },
+  { href: '/architecture', label: 'Architecture', icon: Network },
+  { href: '/settings', label: 'Settings & Demo', icon: Settings },
+  { href: '/', label: 'System Presentation', icon: Play },
 ];
 
 export default function Sidebar() {

@@ -3,9 +3,12 @@
 import { useStore } from '@/lib/store';
 import {
   Route, Play, Check, X, RefreshCw, ArrowRight, Clock, AlertTriangle,
-  RotateCw, Layers, Sparkles, Plane, ShieldAlert, CheckCircle, Info, ChevronRight
+  RotateCw, Layers, Sparkles, Plane, ShieldAlert, CheckCircle, Info, ChevronRight,
+  ChevronDown, ExternalLink, Calendar, MapPin, ArrowRightLeft, Send
 } from 'lucide-react';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { calculateFeasibility, rankResults } from '@/lib/feasibility-engine';
 import { CircularLinkedList, Deque, dijkstra, bubbleSortBy, selectionSortBy, insertionSortBy, mergeSortBy, GenericSortResult } from '@/lib/dsa-engine';
 import { BloodBank, ReviewTask, FeasibilityResult } from '@/lib/types';
@@ -19,18 +22,33 @@ function formatMin(m: number): string {
 
 type SortAlgo = 'merge' | 'insertion' | 'selection' | 'bubble';
 
-export default function RedistributionPage() {
+interface PlannerReviewTask extends ReviewTask {
+  sourceBankName?: string;
+  destBankName?: string;
+  targetDestBankId?: string;
+  associatedRequestId?: string;
+  actionLabel?: string;
+  expiryHoursRemaining?: number;
+}
+
+function RedistributionContent() {
+  const router = useRouter();
   const bloodBanks = useStore((s) => s.bloodBanks);
   const inventory = useStore((s) => s.inventory);
   const requests = useStore((s) => s.requests);
   const getNow = useStore((s) => s.getNow);
   const createTransfer = useStore((s) => s.createTransfer);
   const approveTransfer = useStore((s) => s.approveTransfer);
-  const rejectTransfer = useStore((s) => s.rejectTransfer);
   const transfers = useStore((s) => s.transfers);
   const graphState = useStore((s) => s.graphState);
   const setFeasibilityResults = useStore((s) => s.setFeasibilityResults);
   const lastFeasibilityResults = useStore((s) => s.lastFeasibilityResults);
+
+  const searchParams = useSearchParams();
+  const paramUnitId = searchParams.get('unitId');
+  const paramSourceBankId = searchParams.get('sourceBankId');
+  const paramDestBankId = searchParams.get('destBankId');
+  const paramRequestId = searchParams.get('requestId');
 
   const now = getNow();
 
@@ -45,6 +63,53 @@ export default function RedistributionPage() {
   const [simulatedDelay, setSimulatedDelay] = useState(0); // minutes
   const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
   const [compareMode, setCompareMode] = useState(false);
+  const [workflowNotice, setWorkflowNotice] = useState<string | null>(null);
+
+  // Selected candidate and submission state for transfer authorization
+  const [selectedCandidateUnitId, setSelectedCandidateUnitId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Prefill parameters from advisory recommendations or query params
+  useEffect(() => {
+    if (paramSourceBankId) setSourceBankId(paramSourceBankId);
+    if (paramDestBankId) setDestBankId(paramDestBankId);
+    if (paramRequestId) setRequestId(paramRequestId);
+    if (paramUnitId) {
+      setSelectedUnits([paramUnitId]);
+    }
+  }, [paramSourceBankId, paramDestBankId, paramRequestId, paramUnitId]);
+
+  // When requestId is selected by admin, auto-link destination and suggest component match
+  const handleSelectRequest = (rId: string) => {
+    setRequestId(rId);
+    setValidationError(null);
+    if (!rId) return;
+
+    const req = requests.find((r) => r.id === rId);
+    if (req) {
+      setDestBankId(req.destinationBankId);
+      // If no source bank is chosen, check if an available unit of the matching component exists
+      if (!sourceBankId) {
+        const matchingUnit = inventory.find(
+          (u) =>
+            u.status === 'available' &&
+            u.transportEligible &&
+            u.bloodBankId !== req.destinationBankId &&
+            u.componentType === req.componentType
+        );
+        if (matchingUnit) {
+          setSourceBankId(matchingUnit.bloodBankId);
+          setSelectedUnits([matchingUnit.id]);
+        }
+      }
+      setWorkflowNotice(
+        `Linked request ${req.id} (${req.bloodType} ${req.componentType} ×${req.quantity}). Destination set to ${
+          bloodBanks.find((b) => b.id === req.destinationBankId)?.name || req.destinationBankId
+        }.`
+      );
+    }
+  };
 
   // Sorting
   const [resultSortAlgo, setResultSortAlgo] = useState<SortAlgo>('merge');
@@ -60,6 +125,7 @@ export default function RedistributionPage() {
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
   const [reviewVisitedCount, setReviewVisitedCount] = useState(0);
   const [reviewCycleActive, setReviewCycleActive] = useState(false);
+  const [cycleCompleted, setCycleCompleted] = useState(false);
 
   const cycleBankList = useMemo(() => {
     return bankCircularList.traverseOneCycle();
@@ -72,15 +138,20 @@ export default function RedistributionPage() {
     setCurrentReviewIndex(0);
     setReviewVisitedCount(1);
     setReviewCycleActive(true);
+    setCycleCompleted(false);
     if (cycleBankList[0]) {
       setSourceBankId(cycleBankList[0].id);
+      setSelectedUnits([]);
+      setWorkflowNotice(`Inspecting Bank 1 of ${cycleBankList.length}: ${cycleBankList[0].name}`);
     }
   };
 
   const handleNextInCycle = () => {
     if (reviewVisitedCount >= cycleBankList.length) {
-      // Completed one full round
+      // Completed exactly one full round - terminate
       setReviewCycleActive(false);
+      setCycleCompleted(true);
+      setWorkflowNotice(`Completed 1 full rotation across all ${cycleBankList.length} blood banks.`);
       return;
     }
     const nextIdx = (currentReviewIndex + 1) % cycleBankList.length;
@@ -89,50 +160,72 @@ export default function RedistributionPage() {
     if (cycleBankList[nextIdx]) {
       setSourceBankId(cycleBankList[nextIdx].id);
       setSelectedUnits([]);
+      setWorkflowNotice(`Inspecting Bank ${reviewVisitedCount + 1} of ${cycleBankList.length}: ${cycleBankList[nextIdx].name}`);
     }
   };
 
-  // ─── DSA 2: Deque for Redistribution Review Tasks ──────────────────────────
-  const [dequeTasks, setDequeTasks] = useState<ReviewTask[]>(() => [
+  // ─── DSA 2: Deque Worklist for Redistribution Review Tasks ──────────────────
+  const [dequeTasks, setDequeTasks] = useState<PlannerReviewTask[]>(() => [
     {
       id: 'task-1',
       title: 'Emergency Expiry Risk (<24h)',
-      description: 'Check Ramanathapuram GH unit INV-bb1-01 approaching expiry within 18h',
+      description: 'Unit INV-bb1-01 approaching expiry within 18h at Ramanathapuram GH',
       priority: 'emergency',
       queueEnd: 'front',
-      reason: 'Urgent expiry threat: Application policy mandates review at FRONT of worklist',
+      reason: 'Urgent expiry threat: Policy mandates review at FRONT of worklist to prevent waste',
       timestamp: '2025-01-15T08:00:00.000Z',
       associatedBankId: 'bb-1',
+      associatedUnitId: 'INV-bb1-01',
+      targetDestBankId: 'bb-5',
+      sourceBankName: 'Ramanathapuram GH',
+      destBankName: 'GRH Madurai',
+      expiryHoursRemaining: 18,
+      actionLabel: 'Review Stock',
     },
     {
       id: 'task-2',
-      title: 'Emergency O- Request Pending',
-      description: 'GRH Madurai requested 2 units O- Packed RBC for trauma patient',
+      title: 'Trauma O- Deficit Request',
+      description: 'GRH Madurai emergency request for 2 units O- Packed RBC',
       priority: 'emergency',
       queueEnd: 'front',
-      reason: 'Trauma priority request: Positioned at FRONT for immediate redistribution match',
+      reason: 'Trauma priority request: Prioritized at FRONT for immediate redistribution match',
       timestamp: '2025-01-15T08:05:00.000Z',
-      associatedBankId: 'bb-5',
+      associatedBankId: 'bb-2',
+      targetDestBankId: 'bb-5',
+      associatedRequestId: 'req-1',
+      sourceBankName: 'Paramakudi GH',
+      destBankName: 'GRH Madurai',
+      actionLabel: 'View Request',
     },
     {
       id: 'task-3',
-      title: 'Routine Platelet Redistribution',
-      description: 'Paramakudi has surplus platelets; check Rameswaram Centre capacity',
+      title: 'Surplus Platelet Rebalance',
+      description: 'Paramakudi GH has surplus Platelets; check Rameswaram GH need',
       priority: 'routine',
       queueEnd: 'rear',
       reason: 'Routine rebalancing: Policy routes non-critical inventory checks to REAR',
       timestamp: '2025-01-15T07:30:00.000Z',
       associatedBankId: 'bb-2',
+      associatedUnitId: 'INV-bb2-03',
+      targetDestBankId: 'bb-3',
+      sourceBankName: 'Paramakudi GH',
+      destBankName: 'Rameswaram GH',
+      expiryHoursRemaining: 72,
+      actionLabel: 'Review Stock',
     },
     {
       id: 'task-4',
-      title: 'Routine Stock Rebalance',
-      description: 'Kamuthi Hospital weekly inventory review',
+      title: 'Scheduled Weekly Audit',
+      description: 'Kamuthi Hospital scheduled component inventory alignment',
       priority: 'routine',
       queueEnd: 'rear',
-      reason: 'Scheduled weekly check: Placed at REAR of deque',
+      reason: 'Scheduled weekly check: Placed at REAR according to standard FIFO queueing',
       timestamp: '2025-01-15T07:00:00.000Z',
       associatedBankId: 'bb-4',
+      targetDestBankId: 'bb-1',
+      sourceBankName: 'Kamuthi Hospital',
+      destBankName: 'Ramanathapuram GH',
+      actionLabel: 'Plan Transfer',
     },
   ]);
 
@@ -152,25 +245,48 @@ export default function RedistributionPage() {
 
   const handleInsertTask = (priority: 'emergency' | 'routine') => {
     const isFront = priority === 'emergency';
-    const newTask: ReviewTask = {
+    const newTask: PlannerReviewTask = {
       id: `task-${Date.now()}`,
-      title: isFront ? 'Emergency Redistribution Alert' : 'Routine Surplus Review',
-      description: isFront ? 'Critical inventory approaching expiry threshold' : 'Standard rebalancing review task',
+      title: isFront ? 'Emergency Expiry Risk' : 'Routine Surplus Review',
+      description: isFront ? 'Critical inventory unit approaching expiry threshold' : 'Standard rebalancing review task',
       priority,
       queueEnd: isFront ? 'front' : 'rear',
       reason: isFront
         ? 'High urgency: Application policy requires insertion at FRONT of review worklist'
         : 'Routine task: Application policy appends to REAR of review worklist',
       timestamp: new Date().toISOString(),
+      associatedBankId: isFront ? 'bb-1' : 'bb-4',
+      targetDestBankId: isFront ? 'bb-5' : 'bb-2',
+      sourceBankName: isFront ? 'Ramanathapuram GH' : 'Kamuthi Hospital',
+      destBankName: isFront ? 'GRH Madurai' : 'Paramakudi GH',
+      actionLabel: 'Review Stock',
     };
 
-    setDequeTasks((prev) => isFront ? [newTask, ...prev] : [...prev, newTask]);
+    setDequeTasks((prev) => (isFront ? [newTask, ...prev] : [...prev, newTask]));
+  };
+
+  // ─── Click Review Action from Task Row ──────────────────────────────────────
+  const handleSelectTaskForReview = (task: PlannerReviewTask) => {
+    if (task.associatedBankId) setSourceBankId(task.associatedBankId);
+    if (task.targetDestBankId) setDestBankId(task.targetDestBankId);
+    if (task.associatedRequestId) setRequestId(task.associatedRequestId);
+    if (task.associatedUnitId) {
+      setSelectedUnits([task.associatedUnitId]);
+    } else {
+      setSelectedUnits([]);
+    }
+    setWorkflowNotice(`Loaded review context for: "${task.title}". Configure parameters and run analysis below.`);
+    
+    // Smooth scroll down to workspace
+    const el = document.getElementById('planning-workspace');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   // ─── DSA 3: Graph / Dijkstra Route Connection for Drone Transport ───────────
   useEffect(() => {
     if (transportMode === 'drone' && sourceBankId && destBankId) {
-      // Map bank IDs to graph node IDs (e.g. bb-1 -> n-bb1, etc.)
       const srcNode = graphState.nodes.find((n) => n.id.includes(sourceBankId) || n.label.includes(sourceBank?.name || ''));
       const dstNode = graphState.nodes.find((n) => n.id.includes(destBankId) || n.label.includes(destBank?.name || ''));
 
@@ -217,6 +333,15 @@ export default function RedistributionPage() {
 
     setFeasibilityResults(results);
     setCompareMode(false);
+    setValidationError(null);
+
+    // Auto-select first feasible candidate
+    const firstFeasible = results.find((r) => r.feasible);
+    if (firstFeasible) {
+      setSelectedCandidateUnitId(firstFeasible.unitId);
+    } else if (results[0]) {
+      setSelectedCandidateUnitId(results[0].unitId);
+    }
   };
 
   const handleCompareDestinations = () => {
@@ -239,6 +364,14 @@ export default function RedistributionPage() {
 
     setFeasibilityResults(allResults);
     setCompareMode(true);
+    setValidationError(null);
+
+    const firstFeasible = allResults.find((r) => r.feasible);
+    if (firstFeasible) {
+      setSelectedCandidateUnitId(firstFeasible.unitId);
+    } else if (allResults[0]) {
+      setSelectedCandidateUnitId(allResults[0].unitId);
+    }
   };
 
   // Sort candidate feasibility results using custom sorting algorithm
@@ -255,7 +388,6 @@ export default function RedistributionPage() {
     const tieBreaker = (a: FeasibilityResult, b: FeasibilityResult) => a.unitId.localeCompare(b.unitId);
 
     let result: GenericSortResult<FeasibilityResult>;
-    // Descending for usableTime and score (highest first)
     const descending = true;
 
     switch (resultSortAlgo) {
@@ -284,169 +416,478 @@ export default function RedistributionPage() {
     };
   }, [lastFeasibilityResults, sortField, resultSortAlgo]);
 
-  const handleApprove = (result: FeasibilityResult) => {
-    const unit = inventory.find((u) => u.id === result.unitId);
-    if (!unit) return;
-    const dest = bloodBanks.find((b) => b.id === result.destinationBankId);
-    if (!dest) return;
+  // Active candidate selected for transfer confirmation
+  const activeCandidate = useMemo(() => {
+    if (sortedFeasibilityResults.length === 0) return null;
+    return (
+      sortedFeasibilityResults.find((r) => r.unitId === selectedCandidateUnitId) ||
+      sortedFeasibilityResults.find((r) => r.feasible) ||
+      sortedFeasibilityResults[0] ||
+      null
+    );
+  }, [sortedFeasibilityResults, selectedCandidateUnitId]);
 
-    const transferId = createTransfer({
-      sourceUnitIds: [result.unitId],
-      sourceBankId: unit.bloodBankId,
-      destinationBankId: result.destinationBankId,
-      requestId: requestId || null,
-      status: 'proposed',
-      transportDuration: result.transportDuration,
-      receivingProcessingDuration: result.receivingProcessingDuration,
-      safetyMargin: result.safetyMargin,
-      estimatedArrival: result.estimatedArrival,
-      estimatedReadiness: result.estimatedReadiness,
-      usableTimeAfterTransfer: result.usableTimeAfterTransfer,
-      quantity: unit.quantity,
-      approvedAt: null,
-      dispatchedAt: null,
-      arrivedAt: null,
-      receivedAt: null,
-      rejectionReason: null,
-    });
-    approveTransfer(transferId);
+  const activeCandidateUnit = useMemo(() => {
+    if (!activeCandidate) return null;
+    return inventory.find((u) => u.id === activeCandidate.unitId) || null;
+  }, [inventory, activeCandidate]);
+
+  // Comprehensive candidate validation logic
+  const candidateValidation = useMemo(() => {
+    if (!activeCandidate) {
+      return {
+        isValid: false,
+        reason: 'No transfer candidate selected. Please run feasibility analysis and select an eligible stock candidate.',
+      };
+    }
+
+    if (!activeCandidate.feasible) {
+      return {
+        isValid: false,
+        reason: activeCandidate.reasons[0] || 'Selected candidate does not satisfy feasibility constraints.',
+      };
+    }
+
+    if (activeCandidate.usableTimeAfterTransfer <= 0) {
+      return {
+        isValid: false,
+        reason: `Remaining shelf life after transit & processing is ${activeCandidate.usableTimeAfterTransfer}m. Unit would expire in flight or buffer.`,
+      };
+    }
+
+    const unit = inventory.find((u) => u.id === activeCandidate.unitId);
+    if (!unit || unit.status !== 'available') {
+      return {
+        isValid: false,
+        reason: `Inventory unit ${activeCandidate.unitId} is not available (current status: ${unit?.status || 'missing'}).`,
+      };
+    }
+
+    const sBankId = unit.bloodBankId || sourceBankId;
+    const dBankId = activeCandidate.destinationBankId || destBankId;
+    if (!sBankId || !dBankId || sBankId === dBankId) {
+      return {
+        isValid: false,
+        reason: 'Source and destination blood banks must be distinct valid participating facilities.',
+      };
+    }
+
+    if (activeCandidate.transportDuration <= 0) {
+      return {
+        isValid: false,
+        reason: 'Calculated transport duration must be greater than zero.',
+      };
+    }
+
+    if (requestId) {
+      const req = requests.find((r) => r.id === requestId);
+      if (!req) {
+        return { isValid: false, reason: `Linked request ${requestId} was not found.` };
+      }
+      if (req.status === 'fulfilled' || req.status === 'cancelled') {
+        return { isValid: false, reason: `Linked request ${requestId} is already ${req.status}.` };
+      }
+    }
+
+    return { isValid: true, reason: null };
+  }, [activeCandidate, inventory, sourceBankId, destBankId, requestId, requests]);
+
+  // ─── Requirement 1 & 2: Real Operation for "Confirm & Create Transfer" ──────
+  const handleConfirmAndCreateTransfer = (candidateToConfirm?: FeasibilityResult) => {
+    const candidate = candidateToConfirm || activeCandidate;
+    if (!candidate) {
+      setValidationError('No candidate selected for transfer.');
+      return;
+    }
+
+    if (isSubmitting) return;
+
+    // Strict validation check
+    if (!candidate.feasible || candidate.usableTimeAfterTransfer <= 0) {
+      setValidationError(
+        candidate.reasons[0] ||
+          `Transfer infeasible: Usable time after transfer is ${candidate.usableTimeAfterTransfer}m (must be > 0).`
+      );
+      return;
+    }
+
+    const unit = inventory.find((u) => u.id === candidate.unitId);
+    if (!unit || unit.status !== 'available') {
+      setValidationError(`Unit ${candidate.unitId} is no longer available in inventory.`);
+      return;
+    }
+
+    const sBankId = unit.bloodBankId || sourceBankId;
+    const dBankId = candidate.destinationBankId || destBankId;
+    if (!sBankId || !dBankId || sBankId === dBankId) {
+      setValidationError('Source and destination blood banks must be distinct valid facilities.');
+      return;
+    }
+
+    // Prevent duplicate transfers
+    const existingActive = transfers.find(
+      (t) =>
+        t.sourceUnitIds.includes(candidate.unitId) &&
+        ['proposed', 'approved', 'in_transit'].includes(t.status)
+    );
+    if (existingActive) {
+      setValidationError(
+        `An active transfer (${existingActive.id}) already exists for unit ${candidate.unitId}. Duplicate submissions are prevented.`
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    setValidationError(null);
+
+    try {
+      // 1. Create transfer record with exact unique ID
+      const transferId = createTransfer({
+        sourceUnitIds: [candidate.unitId],
+        sourceBankId: sBankId,
+        destinationBankId: dBankId,
+        requestId: requestId || null,
+        status: 'proposed',
+        transportDuration: candidate.transportDuration,
+        receivingProcessingDuration: candidate.receivingProcessingDuration,
+        safetyMargin: candidate.safetyMargin,
+        estimatedArrival: candidate.estimatedArrival,
+        estimatedReadiness: candidate.estimatedReadiness,
+        usableTimeAfterTransfer: candidate.usableTimeAfterTransfer,
+        quantity: unit.quantity,
+        approvedAt: null,
+        dispatchedAt: null,
+        arrivedAt: null,
+        receivedAt: null,
+        rejectionReason: null,
+        transportMode: transportMode,
+      });
+
+      // 2. Authorize transfer (reserves inventory and marks status approved)
+      approveTransfer(transferId);
+
+      // 3. Verify persistence in canonical store
+      const persisted = useStore.getState().transfers.find((t) => t.id === transferId);
+      if (!persisted) {
+        throw new Error('Persistence verification failed: transfer record was not found in store.');
+      }
+
+      // 4. Concise message & navigate immediately to Transfer Tracking
+      setWorkflowNotice(`Transfer ${transferId} created & authorized! Redirecting to Transfer Tracking...`);
+      router.push(`/transfers?transferId=${transferId}&created=true`);
+    } catch (err: any) {
+      setValidationError(err?.message || 'Failed to create and authorize transfer.');
+      setIsSubmitting(false);
+    }
   };
 
   const toggleUnit = (id: string) => {
-    setSelectedUnits((prev) => prev.includes(id) ? prev.filter((u) => u !== id) : [...prev, id]);
+    setSelectedUnits((prev) => (prev.includes(id) ? prev.filter((u) => u !== id) : [...prev, id]));
   };
 
   const requiredTime = transportDuration + processingDuration + safetyMargin;
 
+  // ─── Requirement 2: Exactly 3 Summary Metrics from Real Application Data ───
+  const tasksNeedingReviewCount = dequeTasks.length;
+  const urgentExpiryRisksCount = useMemo(() => {
+    return inventory.filter(
+      (u) => u.status === 'available' && new Date(u.expiryTimestamp).getTime() - now < 24 * 3600000
+    ).length;
+  }, [inventory, now]);
+  
+  const feasibleTransferCandidatesCount = useMemo(() => {
+    if (lastFeasibilityResults.length > 0) {
+      return lastFeasibilityResults.filter((r) => r.feasible).length;
+    }
+    // Prior to running ad-hoc analysis, count transfer-eligible units with positive remaining margin
+    return inventory.filter(
+      (u) => u.status === 'available' && u.transportEligible && new Date(u.expiryTimestamp).getTime() - now > 4 * 3600000
+    ).length;
+  }, [lastFeasibilityResults, inventory, now]);
+
   return (
     <>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      {/* ─── 1. Simplified Page Header ───────────────────────────────────────── */}
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1>Time-Aware Redistribution Planner</h1>
-          <p>Evaluate feasibility of blood redistribution using actual Graph/Dijkstra route duration, Circular Bank Rotation, and Deque worklist</p>
+          <h1>Redistribution Planner</h1>
+          <p>Review expiring stock and plan feasible transfers.</p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              if (dequeTasks.length > 0) {
+                handleSelectTaskForReview(dequeTasks[0]);
+              }
+            }}
+            disabled={dequeTasks.length === 0}
+          >
+            <Clock size={14} /> Review Top Urgent Task
+          </button>
         </div>
       </div>
 
       <div className="page-content">
-        {/* ─── DSA Panel 1: Circular Linked List Blood Bank Review Cycle ─────── */}
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <RotateCw size={18} color="var(--color-primary)" />
-              <h2 style={{ fontSize: 15 }}>Periodic Bank Review Cycle (Circular Linked List)</h2>
+        {/* ─── 2. Compact Summary (At most 3 small metrics) ──────────────────── */}
+        <div className="stats-grid" style={{ marginBottom: 20 }}>
+          <div className="stat-card">
+            <div className="stat-label">Tasks Needing Review</div>
+            <div className="stat-value" style={{ color: tasksNeedingReviewCount > 0 ? 'var(--color-primary)' : 'var(--text-muted)' }}>
+              {tasksNeedingReviewCount}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {!reviewCycleActive ? (
-                <button className="btn btn-primary btn-sm" onClick={handleStartReviewCycle}>
-                  <Play size={13} /> Start Cyclic Review (A → B → C → A)
-                </button>
-              ) : (
-                <button className="btn btn-primary btn-sm" onClick={handleNextInCycle}>
-                  <ChevronRight size={13} /> Next Bank in Cycle ({reviewVisitedCount}/{cycleBankList.length})
-                </button>
-              )}
+            <div className="stat-desc">
+              {dequeTasks.filter((t) => t.priority === 'emergency').length} emergency,{' '}
+              {dequeTasks.filter((t) => t.priority === 'routine').length} routine in worklist
             </div>
           </div>
-          <div className="card-body">
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-              <strong>Circular Linked List Architecture:</strong> Participating blood banks form a closed cyclic structure where the last bank’s node pointer references the head. Each cycle inspects stock, approaching-expiry inventory, and outstanding demands, terminating automatically after exactly 1 complete round.
-            </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-              <div>
-                <span style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>CURRENT REVIEW NODE:</span>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-primary)' }}>
-                  {currentReviewedBank ? currentReviewedBank.name : '—'} ({currentReviewedBank?.city})
-                </div>
-              </div>
-              <div style={{ fontSize: 18, color: 'var(--text-muted)', margin: '0 8px' }}>→</div>
-              <div>
-                <span style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>NEXT POINTER (curr.next):</span>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>
-                  {nextBankInCycle ? nextBankInCycle.name : '—'}
-                </div>
-              </div>
-              {reviewCycleActive && (
-                <div style={{ marginLeft: 'auto' }}>
-                  <span className="badge badge-warning">
-                    Cycle in progress: {reviewVisitedCount} of {cycleBankList.length} banks inspected
-                  </span>
-                </div>
-              )}
+          <div className="stat-card">
+            <div className="stat-label">Feasible Transfer Candidates</div>
+            <div className="stat-value" style={{ color: 'var(--color-success)' }}>
+              {feasibleTransferCandidatesCount}
             </div>
+            <div className="stat-desc">
+              {lastFeasibilityResults.length > 0 ? 'Evaluated options with positive shelf life' : 'Transfer-eligible network units'}
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-label">Urgent Expiry Risks</div>
+            <div className="stat-value" style={{ color: urgentExpiryRisksCount > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+              {urgentExpiryRisksCount}
+            </div>
+            <div className="stat-desc">Available units expiring within 24 hours</div>
           </div>
         </div>
 
-        {/* ─── DSA Panel 2: Deque Worklist for Redistribution Tasks ─────────── */}
+        {/* Workflow Confirmation or Guidance Notice */}
+        {workflowNotice && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 16,
+              padding: '10px 16px',
+              borderLeft: '4px solid var(--color-primary)',
+              background: 'rgba(56, 189, 248, 0.08)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Info size={16} color="var(--color-primary)" />
+              <span>{workflowNotice}</span>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setWorkflowNotice(null)}
+              style={{ padding: '2px 8px', fontSize: 11 }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* ─── 3. Main Focus: Priority Review Queue ─────────────────────────── */}
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Layers size={18} color="var(--color-primary)" />
-              <h2 style={{ fontSize: 15 }}>Planner Review Worklist (Double-Ended Queue — Deque)</h2>
+              <div>
+                <h2 style={{ fontSize: 15, margin: 0 }}>Priority Review Queue</h2>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  Worklist ordered by urgency using double-ended queue policy
+                </span>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleInsertTask('emergency')}>
-                + Insert Emergency at Front
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleInsertTask('routine')}>
-                + Insert Routine at Rear
-              </button>
-              <button className="btn btn-primary btn-sm" onClick={handlePopFrontTask} disabled={dequeTasks.length === 0}>
-                Pop Front (High Priority)
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={handlePopRearTask} disabled={dequeTasks.length === 0}>
-                Pop Rear (Routine)
-              </button>
-            </div>
+            <span className="badge badge-normal" style={{ fontSize: 11 }}>
+              {dequeTasks.length} {dequeTasks.length === 1 ? 'task' : 'tasks'} pending
+            </span>
           </div>
-          <div className="card-body">
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-              <strong>Deque Policy:</strong> Emergency review tasks (critical expiry & trauma requests) are pushed to the <strong>FRONT</strong> for immediate evaluation. Routine rebalancing tasks are pushed to the <strong>REAR</strong>. Supports O(1) insertion/removal at both ends.
-              <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                * Note: Ordering represents simulated administrative policy, not clinical triage.
-              </span>
-            </div>
 
+          <div className="card-body">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {dequeTasks.map((t, i) => (
-                <div
-                  key={t.id}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    background: i === 0 ? 'rgba(220, 38, 38, 0.08)' : 'rgba(255,255,255,0.02)',
-                    borderLeft: t.priority === 'emergency' ? '3px solid var(--color-danger)' : '3px solid var(--color-info)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontSize: 12,
-                  }}
-                >
-                  <div>
-                    <span style={{ fontWeight: 600, marginRight: 8 }}>
-                      {i === 0 ? 'FRONT [FIRST REVIEW]' : i === dequeTasks.length - 1 ? 'REAR' : `POSITION #${i + 1}`}:
-                    </span>
-                    <span style={{ fontWeight: 500 }}>{t.title}</span> — <span>{t.description}</span>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{t.reason}</div>
+              {dequeTasks.map((t, index) => {
+                const isFront = index === 0;
+                const isEmergency = t.priority === 'emergency';
+
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 14px',
+                      borderRadius: 8,
+                      background: isEmergency ? 'rgba(220, 38, 38, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                      border: isEmergency ? '1px solid rgba(220, 38, 38, 0.25)' : '1px solid var(--border-color)',
+                      flexWrap: 'wrap',
+                      gap: 12,
+                    }}
+                  >
+                    {/* Left: Indicator, Title & Routing info */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flex: 1, minWidth: 280 }}>
+                      <span
+                        className={`badge ${isEmergency ? 'badge-critical' : 'badge-info'}`}
+                        style={{ marginTop: 2, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.04em' }}
+                      >
+                        {isEmergency ? 'Emergency' : 'Routine'}
+                      </span>
+
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>
+                            {t.title}
+                          </span>
+                          {t.expiryHoursRemaining !== undefined && (
+                            <span
+                              className={`badge ${t.expiryHoursRemaining <= 24 ? 'badge-critical' : 'badge-warning'}`}
+                              style={{ fontSize: 10 }}
+                            >
+                              <Clock size={10} style={{ marginRight: 3, verticalAlign: 'middle' }} />
+                              {t.expiryHoursRemaining}h remaining
+                            </span>
+                          )}
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            [{isFront ? 'Front: Immediate' : index === dequeTasks.length - 1 ? 'Rear: Scheduled' : `#${index + 1}`}]
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span>{t.description}</span>
+                          {(t.sourceBankName || t.destBankName) && (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                              • {t.sourceBankName || 'Network'} {t.destBankName ? `→ ${t.destBankName}` : ''}
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                          <strong>Reason:</strong> {t.reason}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Contextual Action */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleSelectTaskForReview(t)}
+                        title="Load task parameters into planner workspace"
+                      >
+                        {t.actionLabel || 'Review Stock'} <ArrowRight size={13} />
+                      </button>
+                    </div>
                   </div>
-                  <span className={`badge ${t.priority === 'emergency' ? 'badge-critical' : 'badge-info'}`}>
-                    {t.priority}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
+
               {dequeTasks.length === 0 && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 12 }}>
-                  Deque worklist is empty.
+                <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13 }}>
+                  All review tasks resolved. Worklist is empty.
                 </div>
               )}
+            </div>
+
+            {/* ─── 5. Expandable Queue Controls / DSA Details ────────────────── */}
+            <details style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', userSelect: 'none' }}>
+                Queue Controls &amp; DSA Details (Double-Ended Queue)
+              </summary>
+              <div style={{ marginTop: 12, padding: '12px', background: 'rgba(255, 255, 255, 0.01)', borderRadius: 6, fontSize: 12 }}>
+                <p style={{ color: 'var(--text-muted)', marginBottom: 10 }}>
+                  <strong>Deque Invariant:</strong> High-urgency shelf-life crises and trauma requests are inserted at the <strong>FRONT</strong> for O(1) precedence. Routine rebalances and scheduled inspections are appended to the <strong>REAR</strong>.
+                </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => handleInsertTask('emergency')}>
+                    + Insert Emergency at Front
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => handleInsertTask('routine')}>
+                    + Insert Routine at Rear
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={handlePopFrontTask} disabled={dequeTasks.length === 0}>
+                    Pop Front (High Priority)
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={handlePopRearTask} disabled={dequeTasks.length === 0}>
+                    Pop Rear (Routine)
+                  </button>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        {/* ─── 4. Simplified Circular Linked List Panel ─────────────────────── */}
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <RotateCw size={17} color="var(--color-primary)" />
+              <h2 style={{ fontSize: 14, margin: 0 }}>Bank Rotation (Circular Linked List)</h2>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {!reviewCycleActive ? (
+                <button className="btn btn-primary btn-sm" onClick={handleStartReviewCycle}>
+                  <Play size={12} /> Start Cyclic Review
+                </button>
+              ) : (
+                <button className="btn btn-primary btn-sm" onClick={handleNextInCycle}>
+                  <ChevronRight size={12} /> Next Bank in Cycle ({reviewVisitedCount}/{cycleBankList.length})
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="card-body" style={{ padding: '12px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <span style={{ fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>CURRENT REVIEW BANK</span>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-primary)' }}>
+                    {currentReviewedBank ? currentReviewedBank.name : '—'}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 16, color: 'var(--text-muted)' }}>→</div>
+
+                <div>
+                  <span style={{ fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600 }}>NEXT IN ROTATION</span>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                    {nextBankInCycle ? nextBankInCycle.name : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                {reviewCycleActive ? (
+                  <span className="badge badge-warning" style={{ fontSize: 11 }}>
+                    Reviewing {reviewVisitedCount} of {cycleBankList.length} banks
+                  </span>
+                ) : cycleCompleted ? (
+                  <span className="badge badge-normal" style={{ fontSize: 11 }}>
+                    ✓ 1 Complete Cycle Traversed
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    Closed-loop rotation (A → B → C → A)
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ─── Core Feasibility Configuration ───────────────────────────────── */}
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2>Redistribution Feasibility Engine Configuration</h2>
+        {/* ─── 6. Planning Workspace & Feasibility Engine ────────────────────── */}
+        <div id="planning-workspace" className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div>
+              <h2 style={{ fontSize: 15, margin: 0 }}>Transfer Feasibility Workspace</h2>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                Calculate exact transit, processing and safety margins for expiring inventory
+              </span>
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 className={`btn btn-sm ${transportMode === 'drone' ? 'btn-primary' : 'btn-secondary'}`}
@@ -464,38 +905,67 @@ export default function RedistributionPage() {
           </div>
 
           <div className="card-body">
-            <div className="grid-3">
+            <div className="grid-3" style={{ marginBottom: 14 }}>
               <div className="form-group">
-                <label className="form-label">Source Blood Bank</label>
-                <select className="form-select" value={sourceBankId} onChange={(e) => { setSourceBankId(e.target.value); setSelectedUnits([]); }}>
-                  <option value="">Select source...</option>
-                  {bloodBanks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Destination Blood Bank</label>
-                <select className="form-select" value={destBankId} onChange={(e) => setDestBankId(e.target.value)}>
-                  <option value="">Select destination...</option>
-                  {bloodBanks.filter((b) => b.id !== sourceBankId).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Link to Request (optional)</label>
-                <select className="form-select" value={requestId} onChange={(e) => setRequestId(e.target.value)}>
-                  <option value="">No linked request</option>
+                <label className="form-label">Linked Hospital Request</label>
+                <select
+                  className="form-select"
+                  value={requestId}
+                  onChange={(e) => handleSelectRequest(e.target.value)}
+                >
+                  <option value="">No linked request (Direct stock rebalance)</option>
                   {pendingRequests.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.id} — {r.bloodType} {r.componentType} ×{r.quantity} ({r.priority})
+                      {r.id} — {r.bloodType} {r.componentType} ×{r.quantity} ({r.priority.toUpperCase()})
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="form-group">
+                <label className="form-label">Source Blood Bank (Stock Origin)</label>
+                <select
+                  className="form-select"
+                  value={sourceBankId}
+                  onChange={(e) => {
+                    setSourceBankId(e.target.value);
+                    setSelectedUnits([]);
+                    setValidationError(null);
+                  }}
+                >
+                  <option value="">Select source...</option>
+                  {bloodBanks.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.city})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Destination Blood Bank / Hospital</label>
+                <select
+                  className="form-select"
+                  value={destBankId}
+                  onChange={(e) => {
+                    setDestBankId(e.target.value);
+                    setValidationError(null);
+                  }}
+                >
+                  <option value="">Select destination...</option>
+                  {bloodBanks
+                    .filter((b) => b.id !== sourceBankId)
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.city})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label className="form-label">
-                  Transport Duration {transportMode === 'drone' ? '(Graph Dijkstra Computed)' : '(min)'}
+                  Transport Duration {transportMode === 'drone' ? '(Dijkstra Optimal Flight)' : '(min)'}
                 </label>
                 <input
                   className="form-input"
@@ -506,13 +976,13 @@ export default function RedistributionPage() {
                 />
                 {transportMode === 'drone' && (
                   <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    Calculated from shortest weighted path on operating graph
+                    Shortest weighted path on operating graph
                   </span>
                 )}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Receiving/Processing (min)</label>
+                <label className="form-label">Receiving / Processing (min)</label>
                 <input
                   className="form-input"
                   type="number"
@@ -522,7 +992,7 @@ export default function RedistributionPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Safety Margin (min)</label>
+                <label className="form-label">Safety Margin Buffer (min)</label>
                 <input
                   className="form-input"
                   type="number"
@@ -533,26 +1003,37 @@ export default function RedistributionPage() {
             </div>
 
             {/* Delay Simulation Control */}
-            <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            <div
+              style={{
+                padding: '10px 14px',
+                background: 'rgba(255, 255, 255, 0.02)',
+                borderRadius: 6,
+                border: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 10,
+                marginBottom: 14,
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
                 <ShieldAlert size={16} color="var(--color-warning)" />
                 <span>
                   Simulated Route Delay: <strong>+{simulatedDelay} min</strong>
-                  {simulatedDelay > 0 && <span style={{ color: 'var(--color-warning)', marginLeft: 6 }}>(Recalculating feasibility...)</span>}
+                  {simulatedDelay > 0 && (
+                    <span style={{ color: 'var(--color-warning)', marginLeft: 6 }}>
+                      (Recalculating corridor feasibility...)
+                    </span>
+                  )}
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setSimulatedDelay((d) => d + 15)}
-                >
-                  +15m Weather/Air Delay
+                <button className="btn btn-secondary btn-sm" onClick={() => setSimulatedDelay((d) => d + 15)}>
+                  +15m Weather Delay
                 </button>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setSimulatedDelay((d) => d + 30)}
-                >
-                  +30m Extended Delay
+                <button className="btn btn-secondary btn-sm" onClick={() => setSimulatedDelay((d) => d + 30)}>
+                  +30m Air Corridor Delay
                 </button>
                 {simulatedDelay > 0 && (
                   <button className="btn btn-secondary btn-sm" onClick={() => setSimulatedDelay(0)}>
@@ -562,8 +1043,21 @@ export default function RedistributionPage() {
               </div>
             </div>
 
-            <div style={{ fontSize: 12, padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 6, marginTop: 12 }}>
-              <strong>Feasibility Formula:</strong> requiredTime = transport ({transportDuration}m) + processing ({processingDuration}m) + safety ({safetyMargin}m) = <strong>{requiredTime}m</strong> | usableTimeAfterTransfer = remainingTime − requiredTime (Feasible iff &gt; 0)
+            {/* Formula Banner */}
+            <div
+              style={{
+                fontSize: 12,
+                padding: '10px 14px',
+                background: 'var(--bg-tertiary)',
+                borderRadius: 6,
+                border: '1px solid var(--border-color)',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>Feasibility Formula:</strong> requiredTime = transit ({transportDuration}m) + processing ({processingDuration}m) + safety margin ({safetyMargin}m) = <strong>{requiredTime}m</strong>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                <code>usableTimeAfterTransfer = remainingTime − requiredTime</code> (Feasible only if usable time &gt; 0)
+              </div>
             </div>
           </div>
         </div>
@@ -571,22 +1065,34 @@ export default function RedistributionPage() {
         {/* ─── Source Inventory Selection ───────────────────────────────────── */}
         {sourceBankId && (
           <div className="card" style={{ marginBottom: 20 }}>
-            <div className="card-header">
-              <h2>Select Source Inventory Units ({selectedUnits.length} selected of {sourceUnits.length})</h2>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: 14, margin: 0 }}>
+                  Select Source Inventory Units ({selectedUnits.length} selected of {sourceUnits.length})
+                </h2>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  Units available at {sourceBank?.name} with transport eligibility
+                </span>
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedUnits(sourceUnits.map((u) => u.id))}>Select All</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedUnits([])}>Clear</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedUnits(sourceUnits.map((u) => u.id))}>
+                  Select All
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedUnits([])}>
+                  Clear
+                </button>
               </div>
             </div>
+
             <div className="card-body" style={{ padding: 0, overflowX: 'auto' }}>
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th></th>
-                    <th>ID</th>
-                    <th>Type</th>
+                    <th style={{ width: 40 }}></th>
+                    <th>Unit ID</th>
+                    <th>Blood Group</th>
                     <th>Component</th>
-                    <th>Qty</th>
+                    <th>Quantity</th>
                     <th>Remaining Shelf Life</th>
                     <th>Status</th>
                   </tr>
@@ -594,23 +1100,48 @@ export default function RedistributionPage() {
                 <tbody>
                   {sourceUnits.map((u) => {
                     const remaining = new Date(u.expiryTimestamp).getTime() - now;
+                    const isSelected = selectedUnits.includes(u.id);
+
                     return (
-                      <tr key={u.id} onClick={() => toggleUnit(u.id)} style={{ cursor: 'pointer' }}>
-                        <td><input type="checkbox" checked={selectedUnits.includes(u.id)} onChange={() => toggleUnit(u.id)} /></td>
-                        <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{u.id}</td>
-                        <td><span className="badge badge-info">{u.bloodType}</span></td>
+                      <tr
+                        key={u.id}
+                        onClick={() => toggleUnit(u.id)}
+                        style={{ cursor: 'pointer', background: isSelected ? 'rgba(56, 189, 248, 0.05)' : undefined }}
+                      >
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleUnit(u.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                        <td style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600 }}>{u.id}</td>
+                        <td>
+                          <span className="badge badge-info">{u.bloodType}</span>
+                        </td>
                         <td style={{ fontSize: 12 }}>{u.componentType}</td>
                         <td style={{ fontWeight: 600 }}>{u.quantity}</td>
                         <td>
-                          <span className={`badge ${remaining < 12 * 3600000 ? 'badge-critical' : 'badge-normal'}`}>
+                          <span className={`badge ${remaining < 24 * 3600000 ? 'badge-critical' : 'badge-normal'}`}>
                             {formatMin(remaining / 60000)}
                           </span>
                         </td>
-                        <td><span className={`badge badge-${u.status}`}>{u.status}</span></td>
+                        <td>
+                          <span className={`badge badge-${u.status}`}>{u.status}</span>
+                        </td>
                       </tr>
                     );
                   })}
-                  {sourceUnits.length === 0 && <tr><td colSpan={7}><div className="empty-state"><p>No eligible available units at this source</p></div></td></tr>}
+                  {sourceUnits.length === 0 && (
+                    <tr>
+                      <td colSpan={7}>
+                        <div className="empty-state" style={{ padding: '24px 16px', textAlign: 'center' }}>
+                          <p>No eligible available units at this source bank.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -618,46 +1149,181 @@ export default function RedistributionPage() {
         )}
 
         {/* ─── Execution Buttons ────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-          <button className="btn btn-primary" onClick={handleRunAnalysis} disabled={!destBankId || selectedUnits.length === 0}>
-            <Play size={16} /> Run Feasibility Analysis
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-primary"
+            onClick={handleRunAnalysis}
+            disabled={!destBankId || selectedUnits.length === 0}
+          >
+            <Play size={15} /> Run Feasibility Analysis
           </button>
-          <button className="btn btn-secondary" onClick={handleCompareDestinations} disabled={selectedUnits.length === 0}>
-            <ArrowRight size={16} /> Compare All Destinations
+          <button
+            className="btn btn-secondary"
+            onClick={handleCompareDestinations}
+            disabled={selectedUnits.length === 0}
+          >
+            <ArrowRight size={15} /> Compare All Destinations
           </button>
-          <button className="btn btn-secondary" onClick={() => { setFeasibilityResults([]); setCompareMode(false); }}>
-            <RefreshCw size={16} /> Reset Results
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setFeasibilityResults([]);
+              setCompareMode(false);
+              setSelectedCandidateUnitId(null);
+            }}
+          >
+            <RefreshCw size={15} /> Reset Results
           </button>
         </div>
 
-        {/* ─── Results Table with Integrated Sorting ────────────────────────── */}
+        {/* ─── Requirement 1: Prominent "Confirm & Create Transfer" Action Panel ─── */}
         {sortedFeasibilityResults.length > 0 && (
-          <div className="card">
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div
+            className="card"
+            style={{
+              marginBottom: 20,
+              border: candidateValidation.isValid ? '2px solid rgba(16, 185, 129, 0.5)' : '2px solid rgba(239, 68, 68, 0.4)',
+              background: candidateValidation.isValid
+                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.95))'
+                : 'linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(15, 23, 42, 0.95))',
+              padding: '18px 22px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ShieldAlert size={20} color={candidateValidation.isValid ? 'var(--color-success)' : 'var(--color-danger)'} />
+                  <h2 style={{ fontSize: 16, margin: 0, fontWeight: 700 }}>
+                    Transfer Authorization
+                  </h2>
+                  {candidateValidation.isValid ? (
+                    <span className="badge badge-normal" style={{ fontSize: 11 }}>Ready to Authorize</span>
+                  ) : (
+                    <span className="badge badge-critical" style={{ fontSize: 11 }}>Validation Incomplete</span>
+                  )}
+                </div>
+
+                {activeCandidate ? (
+                  <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+                    Candidate Unit: <strong style={{ color: '#fff', fontFamily: 'monospace' }}>{activeCandidate.unitId}</strong>
+                    {activeCandidateUnit && (
+                      <span> ({activeCandidateUnit.bloodType} {activeCandidateUnit.componentType})</span>
+                    )} | Origin:{' '}
+                    <strong>{bloodBanks.find((b) => b.id === (activeCandidateUnit?.bloodBankId || sourceBankId))?.name || sourceBankId}</strong>
+                    {' → '}Destination:{' '}
+                    <strong>{bloodBanks.find((b) => b.id === (activeCandidate.destinationBankId || destBankId))?.name || destBankId}</strong>
+                    {requestId && (
+                      <span style={{ color: '#60a5fa', marginLeft: 8 }}>
+                        (Linked Request: {requestId})
+                      </span>
+                    )}
+                    <div style={{ fontSize: 12, marginTop: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <span>Required Transit &amp; Buffer: <strong>{formatMin(activeCandidate.requiredTime)}</strong></span>
+                      <span>
+                        Usable Shelf Life After Transfer:{' '}
+                        <strong style={{ color: activeCandidate.usableTimeAfterTransfer > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                          {activeCandidate.usableTimeAfterTransfer > 0 ? `+${formatMin(activeCandidate.usableTimeAfterTransfer)}` : `-${formatMin(Math.abs(activeCandidate.usableTimeAfterTransfer))}`}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                    No candidate selected from feasibility results.
+                  </div>
+                )}
+
+                {!candidateValidation.isValid && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} />
+                    <span>Cannot confirm transfer: {candidateValidation.reason}</span>
+                  </div>
+                )}
+
+                {validationError && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-danger)' }}>
+                    {validationError}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <button
+                  className="btn btn-primary"
+                  style={{
+                    padding: '12px 24px',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    boxShadow: candidateValidation.isValid ? '0 4px 14px rgba(220, 38, 38, 0.4)' : undefined,
+                    cursor: candidateValidation.isValid && !isSubmitting ? 'pointer' : 'not-allowed',
+                    opacity: candidateValidation.isValid && !isSubmitting ? 1 : 0.6,
+                  }}
+                  onClick={() => handleConfirmAndCreateTransfer()}
+                  disabled={!candidateValidation.isValid || isSubmitting}
+                  title={candidateValidation.isValid ? 'Authorize transfer and create custody record in Transfer Tracking' : (candidateValidation.reason || undefined)}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" /> Authorizing Transfer...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={16} /> Confirm &amp; Create Transfer
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Feasibility Results Table with Integrated Sorting ────────────── */}
+        {sortedFeasibilityResults.length > 0 && (
+          <div className="card" style={{ marginBottom: 24 }}>
+            <div
+              className="card-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 10,
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h2>Feasibility Recommendations ({sortedFeasibilityResults.length})</h2>
-                <span className={`badge ${sortedFeasibilityResults.some((r) => r.feasible) ? 'badge-normal' : 'badge-critical'}`}>
+                <h2 style={{ fontSize: 15, margin: 0 }}>
+                  Feasibility Results ({sortedFeasibilityResults.length})
+                </h2>
+                <span
+                  className={`badge ${
+                    sortedFeasibilityResults.some((r) => r.feasible) ? 'badge-normal' : 'badge-critical'
+                  }`}
+                >
                   {sortedFeasibilityResults.filter((r) => r.feasible).length} feasible
                 </span>
               </div>
 
-              {/* Sorting Algorithm for Results */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Sorting Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <select
                   className="form-select"
                   value={sortField}
                   onChange={(e) => setSortField(e.target.value as any)}
-                  style={{ width: 180 }}
+                  style={{ width: 180, fontSize: 12 }}
                 >
                   <option value="usableTime">Sort: Usable Time Remaining</option>
                   <option value="score">Sort: Feasibility Score</option>
                   <option value="remaining">Sort: Expiry Time</option>
                 </select>
+
                 <select
                   className="form-select"
                   value={resultSortAlgo}
                   onChange={(e) => setResultSortAlgo(e.target.value as SortAlgo)}
-                  style={{ width: 170 }}
+                  style={{ width: 170, fontSize: 12 }}
                 >
                   <option value="merge">Merge Sort (O(n log n))</option>
                   <option value="insertion">Insertion Sort (O(n²))</option>
@@ -668,8 +1334,16 @@ export default function RedistributionPage() {
             </div>
 
             {sortMetrics && (
-              <div style={{ padding: '6px 16px', background: 'rgba(255,255,255,0.01)', borderBottom: '1px solid var(--border-color)', fontSize: 11, color: 'var(--text-muted)' }}>
-                Sorted via <strong>{sortMetrics.algoName}</strong>: {sortMetrics.comparisons} comparisons executed in {sortMetrics.timeMs}ms (Deterministic tie-breaking by Unit ID).
+              <div
+                style={{
+                  padding: '6px 16px',
+                  background: 'rgba(255, 255, 255, 0.01)',
+                  borderBottom: '1px solid var(--border-color)',
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                }}
+              >
+                Ranked with <strong>{sortMetrics.algoName}</strong>: {sortMetrics.comparisons} comparisons in {sortMetrics.timeMs}ms (Deterministic tie-breaking). Click any candidate row to select for authorization.
               </div>
             )}
 
@@ -677,61 +1351,91 @@ export default function RedistributionPage() {
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th style={{ width: 40 }}>Select</th>
                     {compareMode && <th>Destination</th>}
-                    <th>Unit</th>
-                    <th>Remaining</th>
-                    <th>Transport</th>
-                    <th>Processing</th>
-                    <th>Safety</th>
-                    <th>Required</th>
-                    <th>Usable After</th>
+                    <th>Unit ID</th>
+                    <th>Remaining Shelf Life</th>
+                    <th>Required Transit &amp; Buffer</th>
+                    <th>Usable Time After Transfer</th>
                     <th>Readiness Est.</th>
-                    <th>Qty</th>
-                    <th>Eligibility</th>
-                    <th>Deadline</th>
-                    <th>Feasible</th>
-                    <th>Score</th>
-                    <th>Reasons</th>
-                    <th>Action</th>
+                    <th>Feasibility Status</th>
+                    <th>Rejection / Approval Reason</th>
+                    <th style={{ textAlign: 'right' }}>Authorization Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedFeasibilityResults.map((r, i) => {
                     const destName = bloodBanks.find((b) => b.id === r.destinationBankId)?.name || r.destinationBankId;
+                    const isSelected = activeCandidate?.unitId === r.unitId;
+
                     return (
-                      <tr key={i} style={{ background: r.feasible ? 'var(--status-normal-bg)' : undefined }}>
-                        {compareMode && <td style={{ fontSize: 12, fontWeight: 500 }}>{destName}</td>}
-                        <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.unitId}</td>
-                        <td style={{ fontWeight: 600 }}>{formatMin(r.remainingTime)}</td>
-                        <td>{formatMin(r.transportDuration)}</td>
-                        <td>{formatMin(r.receivingProcessingDuration)}</td>
-                        <td>{formatMin(r.safetyMargin)}</td>
-                        <td style={{ fontWeight: 600 }}>{formatMin(r.requiredTime)}</td>
-                        <td style={{ fontWeight: 700, color: r.usableTimeAfterTransfer > 0 ? 'var(--status-normal)' : 'var(--status-critical)' }}>
-                          {formatMin(r.usableTimeAfterTransfer)}
+                      <tr
+                        key={i}
+                        onClick={() => setSelectedCandidateUnitId(r.unitId)}
+                        style={{
+                          cursor: 'pointer',
+                          background: isSelected
+                            ? 'rgba(56, 189, 248, 0.08)'
+                            : r.feasible
+                            ? 'rgba(16, 185, 129, 0.03)'
+                            : undefined,
+                          borderLeft: isSelected ? '3px solid var(--color-primary)' : undefined,
+                        }}
+                      >
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="radio"
+                            name="candidate-select"
+                            checked={isSelected}
+                            onChange={() => setSelectedCandidateUnitId(r.unitId)}
+                          />
                         </td>
-                        <td style={{ fontSize: 11 }}>{new Date(r.estimatedReadiness).toLocaleTimeString()}</td>
-                        <td>{r.quantityAvailable}/{r.quantityRequested}</td>
-                        <td><span className={`badge ${r.eligibilityPassed ? 'badge-normal' : 'badge-critical'}`}>{r.eligibilityPassed ? 'Pass' : 'Fail'}</span></td>
-                        <td><span className={`badge ${r.deadlineMet ? 'badge-normal' : 'badge-critical'}`}>{r.deadlineMet ? 'Met' : 'Missed'}</span></td>
-                        <td><span className={`badge ${r.feasible ? 'badge-normal' : 'badge-critical'}`}>{r.feasible ? '✓ Feasible' : '✗ Not Feasible'}</span></td>
-                        <td style={{ fontWeight: 600 }}>{r.score.toFixed(2)}</td>
-                        <td style={{ fontSize: 11, maxWidth: 220 }}>
-                          {r.reasons.map((reason, j) => <div key={j} style={{ color: !r.feasible ? 'var(--color-danger)' : undefined }}>{reason}</div>)}
-                          {r.scoreFactors.length > 0 && (
-                            <details style={{ marginTop: 4 }}>
-                              <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Score factors</summary>
-                              {r.scoreFactors.map((f, k) => (
-                                <div key={k} style={{ fontSize: 10 }}>{f.factor}: {f.value.toFixed(1)} × {f.weight}%</div>
-                              ))}
-                            </details>
-                          )}
+                        {compareMode && (
+                          <td style={{ fontSize: 12, fontWeight: 500 }}>{destName}</td>
+                        )}
+                        <td style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600 }}>{r.unitId}</td>
+                        <td style={{ fontWeight: 600 }}>{formatMin(r.remainingTime)}</td>
+                        <td>
+                          {formatMin(r.requiredTime)}{' '}
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                            ({r.transportDuration}m + {r.receivingProcessingDuration}m + {r.safetyMargin}m)
+                          </span>
+                        </td>
+                        <td
+                          style={{
+                            fontWeight: 700,
+                            color: r.usableTimeAfterTransfer > 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                          }}
+                        >
+                          {r.usableTimeAfterTransfer > 0 ? `+${formatMin(r.usableTimeAfterTransfer)}` : `-${formatMin(Math.abs(r.usableTimeAfterTransfer))}`}
+                        </td>
+                        <td style={{ fontSize: 11 }}>
+                          {new Date(r.estimatedReadiness).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </td>
                         <td>
-                          {r.feasible && (
-                            <button className="btn btn-success btn-sm" onClick={() => handleApprove(r)}>
-                              <Check size={12} /> Approve
+                          <span className={`badge ${r.feasible ? 'badge-normal' : 'badge-critical'}`}>
+                            {r.feasible ? '✓ Feasible' : '✗ Not Feasible'}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11, maxWidth: 260 }}>
+                          {r.reasons.map((reason, j) => (
+                            <div key={j} style={{ color: !r.feasible ? 'var(--color-danger)' : undefined }}>
+                              {reason}
+                            </div>
+                          ))}
+                        </td>
+                        <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                          {r.feasible ? (
+                            <button
+                              className="btn btn-success btn-sm"
+                              onClick={() => handleConfirmAndCreateTransfer(r)}
+                              disabled={isSubmitting}
+                              title="Confirm this transfer candidate and navigate to Transfer Tracking"
+                            >
+                              <Check size={13} /> Confirm &amp; Create Transfer
                             </button>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'var(--color-danger)' }}>Infeasible</span>
                           )}
                         </td>
                       </tr>
@@ -742,7 +1446,63 @@ export default function RedistributionPage() {
             </div>
           </div>
         )}
+
+        {/* ─── 7. Collapsible: How the algorithm works ──────────────────────── */}
+        <details className="card" style={{ marginTop: 20, border: '1px solid var(--border-color)' }}>
+          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+            <CheckCircle size={16} color="var(--color-primary)" />
+            <span>How the algorithm works: Circular Rotation, Deque Scheduling, Dijkstra Routing &amp; O(n log n) Sorting</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto', fontWeight: 400 }}>Click to expand operational proof</span>
+          </summary>
+          <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', paddingTop: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-primary)', marginBottom: 6 }}>
+                  1. Circular Linked List (Round-Robin Bank Review)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Participating blood banks form a closed cyclic structure where the last bank’s node pointer references the head. The traversal visits each facility sequentially (A → B → C → A) to ensure fair inventory inspection without starving isolated taluk hospitals, terminating automatically after exactly 1 complete round.
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-danger)', marginBottom: 6 }}>
+                  2. Double-Ended Queue (Deque) Worklist
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Review tasks are scheduled via a Deque with O(1) front and rear operations. Critical shelf-life emergencies (&lt;24h) and trauma deficits are pushed to the <strong>FRONT</strong> for immediate evaluation. Routine stock rebalances and scheduled audits are appended to the <strong>REAR</strong>.
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-info)', marginBottom: 6 }}>
+                  3. Dijkstra Shortest-Path Graph Routing
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Drone transfer durations are calculated by finding the minimum-cost path between source and destination nodes across the operating air corridor network. Flight minutes are computed from path distance at 60 km/h cruising velocity plus simulated meteorological delays.
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-warning)', marginBottom: 6 }}>
+                  4. Time-Decay Feasibility Invariant
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  A candidate transfer is strictly rejected if <code>remainingTime − (transit + processing + safetyMargin) &le; 0</code>. This guarantees that no blood product is transferred if it would expire in flight or arrive with zero usable clinical shelf life.
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
     </>
+  );
+}
+
+export default function RedistributionPage() {
+  return (
+    <Suspense fallback={<div className="page-content" style={{ color: '#94a3b8' }}>Loading Redistribution Planner...</div>}>
+      <RedistributionContent />
+    </Suspense>
   );
 }

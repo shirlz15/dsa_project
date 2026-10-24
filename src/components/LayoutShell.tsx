@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
+import AdminTopBar from '@/components/AdminTopBar';
 
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -14,9 +15,12 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   return (
     <div className="app-layout">
       <Sidebar />
-      <main className="main-content">
-        {children}
-      </main>
+      <div className="main-content-wrapper" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <AdminTopBar />
+        <main className="main-content" style={{ flex: 1 }}>
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

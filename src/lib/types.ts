@@ -16,6 +16,17 @@ export type ExpiryRisk = 'normal' | 'warning' | 'critical' | 'expired';
 
 // ─── Entities ────────────────────────────────────────────────────────────────
 
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'Super Admin' | 'Network Director' | 'Operations Lead' | 'Audit Officer';
+  facility: string;
+  badgeNumber: string;
+  sessionToken: string;
+  authenticatedAt: string;
+}
+
 export interface BloodBank {
   id: string;
   name: string;
@@ -26,6 +37,7 @@ export interface BloodBank {
   capacity: number;
   contact: string;
   emergencyActive: boolean;
+  status?: 'active' | 'deactivated' | 'emergency';
   createdAt: string;
 }
 
@@ -77,6 +89,41 @@ export interface Transfer {
   rejectionReason: string | null;
   createdAt: string;
   lastUpdated: string;
+  routeNodes?: string[];
+  transportMode?: 'drone' | 'ground';
+}
+
+export interface RedistributionCandidate {
+  destinationBankId: string;
+  destinationBankName: string;
+  requestId: string | null;
+  hospitalName?: string;
+  distanceKm: number;
+  transportDurationMin: number;
+  receivingDurationMin: number;
+  safetyMarginMin: number;
+  totalRequiredTimeMin: number;
+  usableTimeAfterTransferMin: number;
+  feasible: boolean;
+  score: number;
+  reason: string;
+  quantityRequested: number;
+  bloodCompatibilityPassed: boolean;
+}
+
+export interface ExpiryAlertMetadata {
+  bloodBankId: string;
+  bloodBankName: string;
+  unitId: string;
+  bloodType: BloodType;
+  componentType: ComponentType;
+  quantity: number;
+  expiryTimestamp: string;
+  remainingMinutes: number;
+  recommendedAction: string;
+  bestCandidate?: RedistributionCandidate | null;
+  candidatesEvaluated?: RedistributionCandidate[];
+  rejectionReasonSummary?: string;
 }
 
 export interface Alert {
@@ -89,7 +136,8 @@ export interface Alert {
   read: boolean;
   resolved: boolean;
   createdAt: string;
-  resolvedAt: string | null;
+  resolvedAt?: string | null;
+  metadata?: ExpiryAlertMetadata;
 }
 
 export interface AuditEvent {

@@ -2,18 +2,13 @@
 
 import { useStore } from '@/lib/store';
 import {
-  Droplets, Package, Clock, AlertTriangle, FileText, Route, Plane,
-  ArrowRightLeft, Activity, TrendingUp, RefreshCw, Play
+  FileText, Clock, Route, ArrowRightLeft, ArrowRight,
+  AlertTriangle, CheckCircle, Package, Droplets, Sparkles,
+  ChevronRight, RefreshCw, Play, ShieldAlert, Check
 } from 'lucide-react';
 import { useMemo } from 'react';
-
-function formatTimeRemaining(ms: number): string {
-  if (ms <= 0) return 'Expired';
-  const hours = Math.floor(ms / 3600000);
-  const mins = Math.floor((ms % 3600000) / 60000);
-  if (hours > 48) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-  return `${hours}h ${mins}m`;
-}
+import Link from 'next/link';
+import { formatMinutes } from '@/lib/recommendation-engine';
 
 export default function DashboardPage() {
   const bloodBanks = useStore((s) => s.bloodBanks);
@@ -21,68 +16,152 @@ export default function DashboardPage() {
   const requests = useStore((s) => s.requests);
   const transfers = useStore((s) => s.transfers);
   const alerts = useStore((s) => s.alerts);
-  const missions = useStore((s) => s.missions);
-  const auditTrail = useStore((s) => s.auditTrail);
-  const demoLoaded = useStore((s) => s.demoLoaded);
-  const loadDemoScenario = useStore((s) => s.loadDemoScenario);
   const getNow = useStore((s) => s.getNow);
   const expiryThresholds = useStore((s) => s.expiryThresholds);
+  const demoLoaded = useStore((s) => s.demoLoaded);
+  const loadDemoScenario = useStore((s) => s.loadDemoScenario);
 
   const now = getNow();
 
+  // Exactly the 4 core decision metrics required
   const metrics = useMemo(() => {
-    const available = inventory.filter((u) => u.status === 'available');
-    const totalUnits = available.reduce((s, u) => s + u.quantity, 0);
-    const expiringCount = inventory.filter((u) => {
-      const remaining = new Date(u.expiryTimestamp).getTime() - now;
-      return u.status === 'available' && remaining > 0 && remaining < expiryThresholds.warningHours * 3600000;
-    }).length;
-    const expiredCount = inventory.filter((u) => u.status === 'expired' || new Date(u.expiryTimestamp).getTime() < now).length;
-    const pendingRequests = requests.filter((r) => r.status === 'pending' || r.status === 'processing').length;
-    const activeTransfers = transfers.filter((t) => ['proposed', 'approved', 'dispatched', 'in_transit'].includes(t.status)).length;
-    const activeMissions = missions.filter((m) => ['flying', 'approved', 'planned'].includes(m.status)).length;
-    const unreadAlerts = alerts.filter((a) => !a.read && !a.resolved).length;
+    // 1. Pending hospital requests
+    const pendingReqs = requests.filter((r) => r.status === 'pending' || r.status === 'processing');
 
-    // Blood type distribution
-    const typeDistribution: Record<string, number> = {};
-    available.forEach((u) => {
-      typeDistribution[u.bloodType] = (typeDistribution[u.bloodType] || 0) + u.quantity;
+    // 2. Expiring inventory requiring review
+    const nearExpiryUnits = inventory.filter((u) => {
+      const remainingMs = new Date(u.expiryTimestamp).getTime() - now;
+      return u.status === 'available' && remainingMs > 0 && remainingMs <= expiryThresholds.warningHours * 3600000;
     });
 
-    // Bank-level stock
-    const bankStock = bloodBanks.map((b) => ({
-      name: b.name.replace(' Blood Bank', '').replace(' Blood Centre', ''),
-      units: inventory.filter((u) => u.bloodBankId === b.id && u.status === 'available')
-        .reduce((s, u) => s + u.quantity, 0),
-    }));
+    // 3. Feasible redistribution recommendations
+    const feasibleAlerts = alerts.filter(
+      (a) => !a.resolved && a.metadata?.bestCandidate != null && a.metadata.bestCandidate.feasible
+    );
+
+    // 4. Active simulated transfers
+    const activeTransfersList = transfers.filter((t) =>
+      ['proposed', 'approved', 'dispatched', 'in_transit'].includes(t.status)
+    );
 
     return {
-      totalBanks: bloodBanks.length,
-      totalUnits,
-      expiringCount,
-      expiredCount,
-      pendingRequests,
-      activeTransfers,
-      activeMissions,
-      unreadAlerts,
-      typeDistribution,
-      bankStock,
+      pendingRequestsCount: pendingReqs.length,
+      expiringCount: nearExpiryUnits.length,
+      feasibleRecsCount: feasibleAlerts.length,
+      activeTransfersCount: activeTransfersList.length,
+      pendingReqs,
+      nearExpiryUnits,
+      feasibleAlerts,
+      activeTransfersList,
     };
-  }, [bloodBanks, inventory, requests, transfers, alerts, missions, now, expiryThresholds]);
+  }, [requests, inventory, alerts, transfers, now, expiryThresholds]);
 
-  // Recent activities from audit trail
-  const recentActivities = auditTrail.slice(-8).reverse();
+  // Urgent items requiring attention
+  const attentionItems = useMemo(() => {
+    const items: {
+      id: string;
+      title: string;
+      subtitle: string;
+      severity: 'critical' | 'warning';
+      actionLabel: string;
+      actionHref: string;
+      type: 'request' | 'expiry' | 'transfer';
+    }[] = [];
 
-  // Expiring soon units
-  const expiringSoon = useMemo(() => {
-    return inventory
-      .filter((u) => {
-        const remaining = new Date(u.expiryTimestamp).getTime() - now;
-        return u.status === 'available' && remaining > 0 && remaining < expiryThresholds.warningHours * 3600000;
-      })
-      .sort((a, b) => new Date(a.expiryTimestamp).getTime() - new Date(b.expiryTimestamp).getTime())
-      .slice(0, 6);
-  }, [inventory, now, expiryThresholds]);
+    // Urgent pending requests
+    const urgentReq = metrics.pendingReqs.find((r) => r.priority === 'urgent' || r.priority === 'emergency') || metrics.pendingReqs[0];
+    if (urgentReq) {
+      const destBank = bloodBanks.find((b) => b.id === urgentReq.destinationBankId);
+      items.push({
+        id: urgentReq.id,
+        title: `${urgentReq.priority.toUpperCase()} REQUISITION: ${urgentReq.quantity}u ${urgentReq.bloodType} ${urgentReq.componentType}`,
+        subtitle: `Requested by ${destBank?.name || urgentReq.destinationBankId} (${destBank?.city || 'Regional'}) • Needed within ${urgentReq.neededBy ? Math.max(1, Math.round((new Date(urgentReq.neededBy).getTime() - now) / 3600000)) : 12}h`,
+        severity: urgentReq.priority === 'emergency' ? 'critical' : 'warning',
+        actionLabel: 'Triage Request',
+        actionHref: '/requests',
+        type: 'request',
+      });
+    }
+
+    // Top near-expiry recommendation
+    const topFeasibleAlert = metrics.feasibleAlerts[0];
+    const cand = topFeasibleAlert?.metadata?.bestCandidate;
+    if (topFeasibleAlert?.metadata && cand) {
+      const m = topFeasibleAlert.metadata;
+      items.push({
+        id: topFeasibleAlert.id,
+        title: `CRITICAL EXPIRY: ${m.quantity}u ${m.bloodType} ${m.componentType} at ${m.bloodBankName}`,
+        subtitle: `Expires in ${formatMinutes(m.remainingMinutes)} • Recommended transfer to ${cand.destinationBankName} (${cand.usableTimeAfterTransferMin}m usable margin)`,
+        severity: m.remainingMinutes <= expiryThresholds.criticalHours * 60 ? 'critical' : 'warning',
+        actionLabel: 'Review Redistribution',
+        actionHref: `/redistribution?unitId=${m.unitId}&sourceBankId=${m.bloodBankId}&destBankId=${cand.destinationBankId}&requestId=${cand.requestId || ''}`,
+        type: 'expiry',
+      });
+    } else if (metrics.nearExpiryUnits.length > 0) {
+      const u = metrics.nearExpiryUnits[0];
+      const bank = bloodBanks.find((b) => b.id === u.bloodBankId);
+      const remMs = new Date(u.expiryTimestamp).getTime() - now;
+      items.push({
+        id: u.id,
+        title: `NEAR-EXPIRY UNIT: ${u.quantity}u ${u.bloodType} ${u.componentType} (${u.id})`,
+        subtitle: `Facility: ${bank?.name || u.bloodBankId} • ${formatMinutes(Math.floor(remMs / 60000))} shelf life remaining`,
+        severity: remMs <= expiryThresholds.criticalHours * 3600000 ? 'critical' : 'warning',
+        actionLabel: 'Inspect Expiry',
+        actionHref: '/expiry-monitoring',
+        type: 'expiry',
+      });
+    }
+
+    // Delayed or infeasible transfers
+    const delayedTransfer = transfers.find((t) => t.status === 'delayed' || (t.usableTimeAfterTransfer <= 0 && t.status !== 'received' && t.status !== 'failed'));
+    if (delayedTransfer) {
+      items.push({
+        id: delayedTransfer.id,
+        title: `TRANSFER DELAY ALERT: Transfer ${delayedTransfer.id}`,
+        subtitle: `Status: ${delayedTransfer.status.toUpperCase()} • Route duration +${delayedTransfer.transportDuration}m. Usable margin: ${delayedTransfer.usableTimeAfterTransfer}m.`,
+        severity: delayedTransfer.usableTimeAfterTransfer <= 0 ? 'critical' : 'warning',
+        actionLabel: 'Track Transfer',
+        actionHref: `/transfers?transferId=${delayedTransfer.id}`,
+        type: 'transfer',
+      });
+    }
+
+    return items;
+  }, [metrics, bloodBanks, now, expiryThresholds, transfers]);
+
+  // Primary continue workflow destination
+  const continueWorkflow = useMemo(() => {
+    if (metrics.pendingRequestsCount > 0) {
+      return {
+        label: 'Triage Pending Hospital Requests',
+        sub: `${metrics.pendingRequestsCount} requisitions awaiting matching in priority queue`,
+        href: '/requests',
+        icon: FileText,
+      };
+    }
+    if (metrics.feasibleRecsCount > 0) {
+      return {
+        label: 'Execute Feasible Redistribution',
+        sub: `${metrics.feasibleRecsCount} verified matches ready for corridor simulation`,
+        href: '/redistribution',
+        icon: Route,
+      };
+    }
+    if (metrics.expiringCount > 0) {
+      return {
+        label: 'Review Expiring Inventory',
+        sub: `${metrics.expiringCount} units approaching threshold`,
+        href: '/expiry-monitoring',
+        icon: Clock,
+      };
+    }
+    return {
+      label: 'Explore Redistribution Planner',
+      sub: 'All requisitions serviced; review corridor capacity',
+      href: '/redistribution',
+      icon: Route,
+    };
+  }, [metrics]);
 
   if (!demoLoaded) {
     return (
@@ -90,228 +169,223 @@ export default function DashboardPage() {
         <Droplets size={48} style={{ color: 'var(--accent-primary)', margin: '0 auto 16px' }} />
         <h2 style={{ marginBottom: 8 }}>Welcome to Blood Navigator</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
-          Load the demo scenario to begin exploring the application.
+          Initialize the administrative data environment to begin oversight operations.
         </p>
         <button className="btn btn-primary" onClick={loadDemoScenario}>
-          <Play size={16} /> Load Demo Scenario
+          <Play size={16} /> Load Scenario Data
         </button>
       </div>
     );
   }
 
+  const ContinueIcon = continueWorkflow.icon;
+
   return (
     <>
-      <div className="page-header">
-        <h1>Overview Dashboard</h1>
-        <p>Real-time metrics from the Blood Navigator simulation</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1>Overview</h1>
+          <p>Supervise hospital requests, near-expiry stock, redistribution advisories, and active simulated transfers across the network.</p>
+        </div>
       </div>
 
       <div className="page-content">
-        {/* Stats Grid */}
-        <div className="stats-grid">
-          {[
-            { icon: Droplets, label: 'Blood Banks', value: metrics.totalBanks, color: '#8B1A2B', bg: '#FDF2F4' },
-            { icon: Package, label: 'Available Units', value: metrics.totalUnits, color: '#059669', bg: '#ECFDF5' },
-            { icon: Clock, label: 'Approaching Expiry', value: metrics.expiringCount, color: '#D97706', bg: '#FFFBEB' },
-            { icon: AlertTriangle, label: 'Expired Units', value: metrics.expiredCount, color: '#DC2626', bg: '#FEF2F2' },
-            { icon: FileText, label: 'Pending Requests', value: metrics.pendingRequests, color: '#2563EB', bg: '#EFF6FF' },
-            { icon: Route, label: 'Active Transfers', value: metrics.activeTransfers, color: '#7C3AED', bg: '#F5F3FF' },
-            { icon: Plane, label: 'Active Missions', value: metrics.activeMissions, color: '#0891B2', bg: '#ECFEFF' },
-            { icon: Activity, label: 'Unread Alerts', value: metrics.unreadAlerts, color: '#EA580C', bg: '#FFF7ED' },
-          ].map(({ icon: Icon, label, value, color, bg }) => (
-            <div className="stat-card" key={label}>
-              <div className="stat-card-icon" style={{ background: bg, color }}>
-                <Icon size={20} />
+        {/* Key Information — Exactly the 4 relevant metrics */}
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 24 }}>
+          <Link href="/requests" style={{ textDecoration: 'none' }}>
+            <div className="stat-card hover-card" style={{ cursor: 'pointer' }}>
+              <div className="stat-card-value" style={{ color: metrics.pendingRequestsCount > 0 ? '#38bdf8' : '#94a3b8' }}>
+                {metrics.pendingRequestsCount}
               </div>
-              <div className="stat-card-value">{value}</div>
-              <div className="stat-card-label">{label}</div>
+              <div className="stat-card-label">Pending Hospital Requests</div>
             </div>
-          ))}
+          </Link>
+
+          <Link href="/expiry-monitoring" style={{ textDecoration: 'none' }}>
+            <div className="stat-card hover-card" style={{ cursor: 'pointer' }}>
+              <div className="stat-card-value" style={{ color: metrics.expiringCount > 0 ? '#f59e0b' : '#94a3b8' }}>
+                {metrics.expiringCount}
+              </div>
+              <div className="stat-card-label">Expiring Stock for Review</div>
+            </div>
+          </Link>
+
+          <Link href="/redistribution" style={{ textDecoration: 'none' }}>
+            <div className="stat-card hover-card" style={{ cursor: 'pointer' }}>
+              <div className="stat-card-value" style={{ color: metrics.feasibleRecsCount > 0 ? '#10b981' : '#94a3b8' }}>
+                {metrics.feasibleRecsCount}
+              </div>
+              <div className="stat-card-label">Feasible Recommendations</div>
+            </div>
+          </Link>
+
+          <Link href="/transfers" style={{ textDecoration: 'none' }}>
+            <div className="stat-card hover-card" style={{ cursor: 'pointer' }}>
+              <div className="stat-card-value" style={{ color: metrics.activeTransfersCount > 0 ? '#a855f7' : '#94a3b8' }}>
+                {metrics.activeTransfersCount}
+              </div>
+              <div className="stat-card-label">Active Simulated Transfers</div>
+            </div>
+          </Link>
         </div>
 
-        <div className="grid-2">
-          {/* Inventory Distribution by Blood Type */}
-          <div className="card">
-            <div className="card-header">
-              <h2>Inventory by Blood Type</h2>
+        {/* Primary Action — Continue Workflow */}
+        <div
+          className="card"
+          style={{
+            background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.12), rgba(15, 23, 42, 0.95))',
+            border: '1px solid rgba(220, 38, 38, 0.35)',
+            borderRadius: '12px',
+            padding: '18px 24px',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '10px',
+              background: 'rgba(220, 38, 38, 0.2)',
+              border: '1px solid rgba(220, 38, 38, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#f87171',
+              flexShrink: 0,
+            }}>
+              <ContinueIcon size={22} />
             </div>
-            <div className="card-body">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {Object.entries(metrics.typeDistribution)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([type, count]) => {
-                    const maxVal = Math.max(...Object.values(metrics.typeDistribution), 1);
-                    return (
-                      <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <span style={{ width: 36, fontWeight: 700, fontSize: 13, color: 'var(--accent-primary)' }}>{type}</span>
-                        <div style={{ flex: 1, height: 24, background: 'var(--bg-tertiary)', borderRadius: 4, overflow: 'hidden' }}>
-                          <div style={{
-                            width: `${(count / maxVal) * 100}%`, height: '100%',
-                            background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))',
-                            borderRadius: 4, transition: 'width 0.5s ease',
-                          }} />
-                        </div>
-                        <span style={{ width: 40, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>{count}</span>
-                      </div>
-                    );
-                  })}
-                {Object.keys(metrics.typeDistribution).length === 0 && (
-                  <div className="empty-state"><p>No available inventory</p></div>
-                )}
+            <div>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f87171', fontWeight: 800 }}>
+                Next Priority Operational Action
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', marginTop: 2 }}>
+                {continueWorkflow.label}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: 2 }}>
+                {continueWorkflow.sub}
               </div>
             </div>
           </div>
 
-          {/* Bank-Level Stock Comparison */}
-          <div className="card">
-            <div className="card-header">
-              <h2>Stock by Blood Bank</h2>
+          <Link
+            href={continueWorkflow.href}
+            className="btn btn-primary"
+            style={{
+              padding: '10px 20px',
+              fontSize: '13px',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <span>Continue Workflow</span>
+            <ArrowRight size={16} />
+          </Link>
+        </div>
+
+        {/* Compact Requires Attention Section */}
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertTriangle size={16} color="#f59e0b" />
+              <h2 style={{ fontSize: '14px', fontWeight: 700 }}>Requires Attention</h2>
             </div>
-            <div className="card-body">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {metrics.bankStock.map((bank) => {
-                  const maxVal = Math.max(...metrics.bankStock.map((b) => b.units), 1);
-                  return (
-                    <div key={bank.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ width: 130, fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {bank.name}
-                      </span>
-                      <div style={{ flex: 1, height: 24, background: 'var(--bg-tertiary)', borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{
-                          width: `${(bank.units / maxVal) * 100}%`, height: '100%',
-                          background: 'linear-gradient(90deg, #1B2A4A, #2D4170)',
-                          borderRadius: 4, transition: 'width 0.5s ease',
-                        }} />
-                      </div>
-                      <span style={{ width: 40, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>{bank.units}</span>
-                    </div>
-                  );
-                })}
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              {attentionItems.length} urgent item{attentionItems.length === 1 ? '' : 's'} identified
+            </span>
+          </div>
+
+          <div className="card-body" style={{ padding: '8px 16px' }}>
+            {attentionItems.length === 0 ? (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b' }}>
+                <CheckCircle size={28} style={{ margin: '0 auto 8px', color: '#10b981', opacity: 0.8 }} />
+                <p style={{ margin: 0, fontSize: '12px' }}>No critical issues requiring immediate intervention</p>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid-2" style={{ marginTop: 20 }}>
-          {/* Expiry Risk */}
-          <div className="card">
-            <div className="card-header">
-              <h2>Expiry Risk — Approaching Units</h2>
-              <span className="badge badge-warning">{expiringSoon.length} units</span>
-            </div>
-            <div className="card-body" style={{ padding: 0 }}>
-              {expiringSoon.length > 0 ? (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Unit ID</th>
-                      <th>Type</th>
-                      <th>Component</th>
-                      <th>Remaining</th>
-                      <th>Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expiringSoon.map((u) => {
-                      const remaining = new Date(u.expiryTimestamp).getTime() - now;
-                      const isCritical = remaining < expiryThresholds.criticalHours * 3600000;
-                      return (
-                        <tr key={u.id}>
-                          <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{u.id}</td>
-                          <td><span className="badge badge-info">{u.bloodType}</span></td>
-                          <td style={{ fontSize: 12 }}>{u.componentType}</td>
-                          <td>
-                            <span className={`badge ${isCritical ? 'badge-critical' : 'badge-warning'}`}>
-                              {formatTimeRemaining(remaining)}
-                            </span>
-                          </td>
-                          <td>{u.quantity}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="empty-state">
-                  <Clock size={32} />
-                  <p>No units approaching expiry within the warning threshold</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Recent Activities */}
-          <div className="card">
-            <div className="card-header">
-              <h2>Recent Activity</h2>
-            </div>
-            <div className="card-body" style={{ padding: 0 }}>
-              {recentActivities.length > 0 ? (
-                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                  {recentActivities.map((event) => (
-                    <div key={event.id} style={{
-                      padding: '10px 20px', borderBottom: '1px solid var(--border-light)',
-                      display: 'flex', gap: 12, alignItems: 'flex-start',
-                    }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: '50%', marginTop: 6, flexShrink: 0,
-                        background: event.action === 'created' ? 'var(--status-normal)' :
-                          event.action === 'approved' ? 'var(--status-info)' :
-                          event.action === 'rejected' ? 'var(--status-critical)' : 'var(--status-warning)',
-                      }} />
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{event.description}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {new Date(event.timestamp).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <Activity size={32} />
-                  <p>No recent activity</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Alerts */}
-        <div className="card" style={{ marginTop: 20 }}>
-          <div className="card-header">
-            <h2>Active Alerts</h2>
-            <span className="badge badge-critical">{alerts.filter((a) => !a.resolved).length} active</span>
-          </div>
-          <div className="card-body" style={{ padding: 0 }}>
-            {alerts.filter((a) => !a.resolved).slice(0, 5).length > 0 ? (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Severity</th>
-                    <th>Type</th>
-                    <th>Message</th>
-                    <th>Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {alerts.filter((a) => !a.resolved).slice(0, 5).map((alert) => (
-                    <tr key={alert.id}>
-                      <td><span className={`badge badge-${alert.severity}`}>{alert.severity}</span></td>
-                      <td style={{ fontSize: 12 }}>{alert.type.replace(/_/g, ' ')}</td>
-                      <td style={{ fontSize: 12 }}>{alert.message}</td>
-                      <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        {new Date(alert.createdAt).toLocaleTimeString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             ) : (
-              <div className="empty-state"><p>No active alerts</p></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '6px 0' }}>
+                {attentionItems.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 14px',
+                      background: item.severity === 'critical' ? 'rgba(220, 38, 38, 0.06)' : 'rgba(245, 158, 11, 0.05)',
+                      border: `1px solid ${item.severity === 'critical' ? 'rgba(220, 38, 38, 0.25)' : 'rgba(245, 158, 11, 0.2)'}`,
+                      borderRadius: '8px',
+                      gap: '12px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                        <span className={`badge badge-${item.severity}`} style={{ fontSize: '9px', fontWeight: 800, padding: '1px 6px' }}>
+                          {item.severity.toUpperCase()}
+                        </span>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#f1f5f9' }}>
+                          {item.title}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        {item.subtitle}
+                      </div>
+                    </div>
+
+                    <Link
+                      href={item.actionHref}
+                      className={item.severity === 'critical' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                      style={{ fontSize: '11px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <span>{item.actionLabel}</span>
+                      <ChevronRight size={12} />
+                    </Link>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
+        </div>
+
+        {/* Operational Flow Quick Navigation */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+          {[
+            { num: '01', title: 'Blood Inventory', desc: 'Maintain regional stock & batch verification', href: '/inventory', icon: Package },
+            { num: '02', title: 'Expiry Monitoring', desc: 'Real-time shelf life & countdown tracking', href: '/expiry-monitoring', icon: Clock },
+            { num: '03', title: 'Hospital Requests', desc: 'FIFO queue triage for clinical orders', href: '/requests', icon: FileText },
+            { num: '04', title: 'Redistribution Planner', desc: 'Time-feasibility & Dijkstra route analysis', href: '/redistribution', icon: Route },
+            { num: '05', title: 'Transfer Tracking', desc: 'Simulated drone sortie dispatch & handoff', href: '/transfers', icon: ArrowRightLeft },
+          ].map((step) => {
+            const Icon = step.icon;
+            return (
+              <Link
+                key={step.num}
+                href={step.href}
+                className="card hover-card"
+                style={{
+                  padding: '14px',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 800 }}>STEP {step.num}</span>
+                  <Icon size={14} color="#64748b" />
+                </div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9' }}>{step.title}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{step.desc}</div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </>

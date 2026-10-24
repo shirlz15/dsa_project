@@ -827,98 +827,603 @@ export default function HomePage() {
     }
   };
 
+  // ── Inline style constants (Tailwind v4 Preflight strips all native styles;
+  //    inline styles guarantee correct layout regardless of CSS load order) ──
+
+  const S = {
+    // Navigation
+    topbar: {
+      position: 'fixed' as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 100,
+      height: 68,
+      background: 'rgba(5, 8, 16, 0.94)',
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    },
+    topbarInner: {
+      maxWidth: 1240,
+      margin: '0 auto',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '0 28px',
+      gap: 24,
+    } as React.CSSProperties,
+    topbarLeft: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      flexShrink: 0,
+    } as React.CSSProperties,
+    logoBadge: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      background: 'rgba(220, 38, 38, 0.15)',
+      border: '1px solid rgba(220, 38, 38, 0.35)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#ef4444',
+      flexShrink: 0,
+      boxShadow: '0 0 16px rgba(220, 38, 38, 0.25)',
+    } as React.CSSProperties,
+    brandCol: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      justifyContent: 'center',
+      gap: 2,
+    },
+    brandName: {
+      fontSize: 16,
+      fontWeight: 800,
+      color: '#f8fafc',
+      letterSpacing: '-0.02em',
+      lineHeight: 1.2,
+    },
+    brandSub: {
+      fontSize: 10,
+      color: '#94a3b8',
+      textTransform: 'uppercase' as const,
+      letterSpacing: '1px',
+      fontWeight: 600,
+      lineHeight: 1.2,
+    },
+    navCenter: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 28,
+    } as React.CSSProperties,
+    navLink: {
+      fontSize: 13.5,
+      fontWeight: 500,
+      color: '#94a3b8',
+      textDecoration: 'none',
+      padding: '6px 14px',
+      borderRadius: 6,
+      transition: 'all 0.2s ease',
+      whiteSpace: 'nowrap' as const,
+    },
+    ctaBtn: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 8,
+      height: 38,
+      padding: '0 18px',
+      borderRadius: 8,
+      background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+      color: '#ffffff',
+      fontSize: 13,
+      fontWeight: 600,
+      fontFamily: 'inherit',
+      textDecoration: 'none',
+      border: '1px solid rgba(239, 68, 68, 0.35)',
+      boxShadow: '0 2px 14px rgba(220, 38, 38, 0.35)',
+      whiteSpace: 'nowrap' as const,
+      flexShrink: 0,
+      boxSizing: 'border-box' as const,
+      transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+    } as React.CSSProperties,
+
+    // Hero
+    heroSection: {
+      minHeight: 'auto',
+      paddingTop: 124,
+      paddingBottom: 60,
+      paddingLeft: 24,
+      paddingRight: 24,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'center',
+      position: 'relative' as const,
+      overflow: 'hidden',
+    },
+    heroContent: {
+      maxWidth: 780,
+      width: '100%',
+      textAlign: 'center' as const,
+      margin: '0 auto 44px',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'center',
+      position: 'relative' as const,
+      zIndex: 2,
+    },
+    eyebrow: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '6px 16px',
+      borderRadius: 9999,
+      background: 'rgba(220, 38, 38, 0.1)',
+      border: '1px solid rgba(220, 38, 38, 0.3)',
+      marginBottom: 20,
+    } as React.CSSProperties,
+    eyebrowDot: {
+      width: 7,
+      height: 7,
+      borderRadius: '50%',
+      background: '#ef4444',
+      boxShadow: '0 0 8px #ef4444',
+      flexShrink: 0,
+    } as React.CSSProperties,
+    eyebrowText: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: '#f87171',
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase' as const,
+    },
+    headline: {
+      fontFamily: "'Syne', sans-serif",
+      fontSize: 'clamp(2.1rem, 3.8vw, 3rem)',
+      fontWeight: 800,
+      lineHeight: 1.18,
+      letterSpacing: '-0.025em',
+      maxWidth: 680,
+      margin: '0 auto 18px',
+      color: '#f1f5f9',
+    },
+    headlineAccent: {
+      background: 'linear-gradient(135deg, #ef4444 0%, #f97316 60%, #f59e0b 100%)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+    } as React.CSSProperties,
+    heroDesc: {
+      fontSize: 'clamp(0.95rem, 1.2vw, 1.05rem)',
+      lineHeight: 1.65,
+      color: '#94a3b8',
+      maxWidth: 620,
+      margin: '0 auto 28px',
+    } as React.CSSProperties,
+    ctaGroup: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 16,
+      flexWrap: 'wrap' as const,
+    },
+    btnPrimary: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      height: 46,
+      padding: '0 24px',
+      borderRadius: 10,
+      background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+      color: '#ffffff',
+      fontSize: 14,
+      fontWeight: 600,
+      fontFamily: 'inherit',
+      border: '1px solid rgba(239, 68, 68, 0.4)',
+      cursor: 'pointer',
+      boxShadow: '0 4px 18px rgba(220, 38, 38, 0.35)',
+      textDecoration: 'none',
+      boxSizing: 'border-box' as const,
+      transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+    } as React.CSSProperties,
+    btnSecondary: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      height: 46,
+      padding: '0 24px',
+      borderRadius: 10,
+      background: 'rgba(15, 23, 42, 0.85)',
+      color: '#f1f5f9',
+      fontSize: 14,
+      fontWeight: 600,
+      fontFamily: 'inherit',
+      border: '1px solid rgba(148, 163, 184, 0.25)',
+      cursor: 'pointer',
+      textDecoration: 'none',
+      boxSizing: 'border-box' as const,
+      backdropFilter: 'blur(8px)',
+      transition: 'all 0.2s ease',
+    } as React.CSSProperties,
+
+    // Animation stage
+    stageContainer: {
+      width: '100%',
+      maxWidth: 1080,
+      background: '#080c16',
+      border: '1px solid rgba(148, 163, 184, 0.18)',
+      borderRadius: 22,
+      overflow: 'hidden',
+      boxShadow: '0 25px 70px -15px rgba(0, 0, 0, 0.85), 0 0 35px rgba(220, 38, 38, 0.08)',
+      position: 'relative' as const,
+      zIndex: 10,
+      marginTop: 14,
+      textAlign: 'left' as const,
+    },
+    stageHeader: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '14px 22px',
+      background: '#060913',
+      borderBottom: '1px solid rgba(148, 163, 184, 0.1)',
+    } as React.CSSProperties,
+    stageInfoLeft: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+    } as React.CSSProperties,
+    stagePill: {
+      padding: '3px 10px',
+      borderRadius: 6,
+      background: 'rgba(220, 38, 38, 0.15)',
+      border: '1px solid rgba(220, 38, 38, 0.3)',
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: 11,
+      fontWeight: 700,
+      color: '#f87171',
+    },
+    stageTitle: {
+      fontSize: 14,
+      fontWeight: 700,
+      color: '#f1f5f9',
+    },
+    statusBadge: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '4px 10px',
+      borderRadius: 9999,
+      background: 'rgba(16, 185, 129, 0.1)',
+      border: '1px solid rgba(16, 185, 129, 0.25)',
+      fontSize: 10,
+      fontWeight: 700,
+      color: '#34d399',
+      letterSpacing: '0.5px',
+    } as React.CSSProperties,
+    pulseDot: {
+      width: 6,
+      height: 6,
+      borderRadius: '50%',
+      background: '#10b981',
+      boxShadow: '0 0 6px #10b981',
+      flexShrink: 0,
+    } as React.CSSProperties,
+    progressTrack: {
+      width: '100%',
+      height: 3,
+      background: 'rgba(148, 163, 184, 0.1)',
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      background: 'linear-gradient(90deg, #dc2626, #f97316)',
+    },
+
+    // Stepper
+    stepperRow: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(7, minmax(130px, 1fr))',
+      gap: 8,
+      padding: '10px 14px',
+      background: '#050810',
+      borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
+      overflowX: 'auto' as const,
+      WebkitOverflowScrolling: 'touch' as const,
+    },
+    stepperNode: (isActive: boolean, isPast: boolean) => ({
+      padding: '8px 6px',
+      borderRadius: 8,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'center',
+      gap: 5,
+      border: isActive ? '1px solid rgba(220, 38, 38, 0.45)' : isPast ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(255, 255, 255, 0.06)',
+      background: isActive ? 'rgba(220, 38, 38, 0.12)' : isPast ? 'rgba(16, 185, 129, 0.04)' : 'rgba(255, 255, 255, 0.02)',
+      cursor: 'pointer',
+      minWidth: 124,
+      transition: 'all 0.2s ease',
+      fontFamily: 'inherit',
+    }),
+    nodeMarker: (isActive: boolean, isPast: boolean) => ({
+      width: 22,
+      height: 22,
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: 10.5,
+      fontWeight: 700,
+      background: isActive ? '#dc2626' : isPast ? 'rgba(16, 185, 129, 0.18)' : '#1e293b',
+      color: isActive ? '#ffffff' : isPast ? '#34d399' : '#94a3b8',
+      border: isActive ? '1px solid #ef4444' : isPast ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(148, 163, 184, 0.25)',
+      boxShadow: isActive ? '0 0 10px rgba(220, 38, 38, 0.5)' : 'none',
+      flexShrink: 0,
+    }) as React.CSSProperties,
+    nodeLabel: (isActive: boolean, isPast?: boolean) => ({
+      fontSize: 10.5,
+      fontWeight: isActive ? 700 : 500,
+      color: isActive ? '#f87171' : isPast ? '#94a3b8' : '#64748b',
+      textAlign: 'center' as const,
+      lineHeight: 1.2,
+      whiteSpace: 'normal' as const,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 26,
+      maxWidth: '100%',
+    }),
+
+    // Toolbar footer
+    toolbarFooter: {
+      padding: '18px 24px',
+      background: '#0a0f1d',
+      borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 24,
+      flexWrap: 'wrap' as const,
+    } as React.CSSProperties,
+    captionBlock: {
+      flex: 1,
+      minWidth: 260,
+      textAlign: 'left' as const,
+    } as React.CSSProperties,
+    captionBadge: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      fontSize: 10.5,
+      fontWeight: 700,
+      color: '#f87171',
+      letterSpacing: '0.8px',
+      marginBottom: 4,
+    } as React.CSSProperties,
+    captionTitle: {
+      fontSize: 15,
+      fontWeight: 800,
+      color: '#f1f5f9',
+      display: 'block',
+      marginBottom: 4,
+    },
+    captionDesc: {
+      fontSize: 12.5,
+      color: '#94a3b8',
+      lineHeight: 1.55,
+      margin: 0,
+    },
+    controlsRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      flexWrap: 'wrap' as const,
+    } as React.CSSProperties,
+    dividerVertical: {
+      width: 1,
+      height: 24,
+      background: 'rgba(148, 163, 184, 0.2)',
+      margin: '0 2px',
+    } as React.CSSProperties,
+    tbBtn: (variant: 'primary' | 'secondary' | 'enter') => ({
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      height: 38,
+      padding: variant === 'enter' ? '0 18px' : '0 15px',
+      borderRadius: 8,
+      fontSize: 12.5,
+      fontWeight: 600,
+      fontFamily: 'inherit',
+      cursor: 'pointer',
+      textDecoration: 'none',
+      whiteSpace: 'nowrap' as const,
+      boxSizing: 'border-box' as const,
+      border: variant === 'enter' ? 'none' : '1px solid',
+      borderColor: variant === 'primary' ? 'rgba(220, 38, 38, 0.45)' : variant === 'secondary' ? 'rgba(148, 163, 184, 0.22)' : 'transparent',
+      background: variant === 'primary' ? 'rgba(220, 38, 38, 0.16)' : variant === 'secondary' ? '#1e293b' : 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+      color: variant === 'primary' ? '#f87171' : variant === 'secondary' ? '#cbd5e1' : '#ffffff',
+      boxShadow: variant === 'enter' ? '0 2px 12px rgba(220, 38, 38, 0.35)' : 'none',
+      transition: 'all 0.2s ease',
+    }) as React.CSSProperties,
+
+    // Phenotype bar
+    phenoBar: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      padding: '10px 16px',
+      background: 'rgba(15, 23, 42, 0.95)',
+      borderBottom: '1px solid rgba(148, 163, 184, 0.1)',
+      fontSize: 12,
+      color: '#cbd5e1',
+    } as React.CSSProperties,
+    bgChip: (active: boolean) => ({
+      padding: '4px 12px',
+      borderRadius: 6,
+      background: active ? '#dc2626' : '#1e293b',
+      border: active ? '1px solid #ef4444' : '1px solid rgba(148, 163, 184, 0.2)',
+      color: active ? '#fff' : '#f1f5f9',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer',
+      fontFamily: 'inherit',
+    }),
+
+    // Sections
+    section: { padding: '80px 24px', maxWidth: 1100, margin: '0 auto' },
+    sectionHeader: { textAlign: 'center' as const, maxWidth: 740, margin: '0 auto 44px', display: 'flex', flexDirection: 'column' as const, alignItems: 'center' },
+    sectionBadge: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderRadius: 9999, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)', color: '#f87171', fontSize: 11, fontWeight: 700, letterSpacing: '1px', marginBottom: 14 } as React.CSSProperties,
+    sectionTitle: { fontFamily: "'Syne',sans-serif", fontSize: 'clamp(1.6rem,3vw,2.2rem)', fontWeight: 800, color: '#f1f5f9', letterSpacing: '-0.02em', marginBottom: 12, lineHeight: 1.2 },
+    sectionSub: { fontSize: 15, color: '#94a3b8', lineHeight: 1.6, margin: 0 },
+
+    // Two-column cards
+    twoCol: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 24 } as React.CSSProperties,
+    featureCard: { padding: '28px 24px', background: 'rgba(13,17,29,0.7)', border: '1px solid rgba(148,163,184,0.12)', borderRadius: 16, textAlign: 'left' as const } as React.CSSProperties,
+    cardIcon: (color: string) => ({
+      width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      marginBottom: 18, background: color === 'red' ? 'rgba(220,38,38,0.12)' : 'rgba(6,182,212,0.12)',
+      color: color === 'red' ? '#f87171' : '#22d3ee', border: `1px solid ${color === 'red' ? 'rgba(220,38,38,0.25)' : 'rgba(6,182,212,0.25)'}`
+    }) as React.CSSProperties,
+    cardH3: { fontSize: 18, fontWeight: 800, color: '#f1f5f9', marginBottom: 10 },
+    cardP: { fontSize: 14, color: '#94a3b8', lineHeight: 1.6, margin: 0 },
+    statPill: (color: string) => ({
+      display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 8,
+      fontSize: 11, fontWeight: 600, marginTop: 18,
+      background: color === 'red' ? 'rgba(220,38,38,0.08)' : 'rgba(6,182,212,0.08)',
+      color: color === 'red' ? '#fca5a5' : '#67e8f9',
+      border: `1px solid ${color === 'red' ? 'rgba(220,38,38,0.2)' : 'rgba(6,182,212,0.2)'}`
+    }) as React.CSSProperties,
+
+    // Workflow grid
+    workflowGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 16 } as React.CSSProperties,
+    workflowCard: { padding: '22px 18px', background: 'rgba(13,17,29,0.65)', border: '1px solid rgba(148,163,184,0.12)', borderRadius: 14, textAlign: 'left' as const } as React.CSSProperties,
+    workflowNum: { fontFamily: "'JetBrains Mono',monospace", fontSize: 18, fontWeight: 800, color: 'rgba(220,38,38,0.6)', marginBottom: 12 },
+    workflowIcon: { width: 34, height: 34, borderRadius: 8, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171', marginBottom: 12, border: '1px solid rgba(255,255,255,0.08)' } as React.CSSProperties,
+    wfH4: { fontSize: 14, fontWeight: 700, color: '#f1f5f9', marginBottom: 6 },
+    wfP: { fontSize: 12, color: '#94a3b8', lineHeight: 1.5, margin: 0 },
+
+    // DSA grid
+    dsaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 18 } as React.CSSProperties,
+    dsaCard: { padding: '22px 20px', background: 'rgba(13,17,29,0.6)', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 14, textAlign: 'left' as const } as React.CSSProperties,
+    dsaHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } as React.CSSProperties,
+    dsaIconBadge: (bg: string, col: string) => ({ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: bg, color: col }) as React.CSSProperties,
+    dsaTag: { fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.05)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)' },
+    dsaCardTitle: { fontSize: 14, fontWeight: 700, color: '#f1f5f9', marginBottom: 6 },
+    dsaCardText: { fontSize: 13, color: '#94a3b8', lineHeight: 1.55, margin: 0 },
+
+    // CTA banner
+    ctaBanner: { padding: '44px 32px', borderRadius: 18, background: 'linear-gradient(135deg,rgba(13,17,29,0.95),rgba(20,10,15,0.95))', border: '1px solid rgba(220,38,38,0.3)', textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' },
+    ctaIconGlow: { width: 60, height: 60, borderRadius: 14, background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.35)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, boxShadow: '0 0 25px rgba(220,38,38,0.25)' } as React.CSSProperties,
+    ctaTitle: { fontFamily: "'Syne',sans-serif", fontSize: 'clamp(1.6rem,3vw,2.2rem)', fontWeight: 800, color: '#f1f5f9', marginBottom: 12 },
+    ctaText: { fontSize: 15, color: '#94a3b8', maxWidth: 620, lineHeight: 1.6, marginBottom: 24 },
+
+    // Footer
+    footer: { background: '#03050a', borderTop: '1px solid rgba(148,163,184,0.1)', padding: '50px 24px 24px' },
+    footerInner: { maxWidth: 1100, margin: '0 auto' },
+    footerTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 36, marginBottom: 36, flexWrap: 'wrap' as const } as React.CSSProperties,
+    footerBrandTitle: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 800, color: '#f1f5f9', marginBottom: 10 } as React.CSSProperties,
+    footerBrandDesc: { fontSize: 13, color: '#94a3b8', maxWidth: 360, lineHeight: 1.6, margin: 0 },
+    footerLinksGroup: { display: 'flex', flexDirection: 'column' as const, gap: 10 },
+    footerGroupTitle: { fontSize: 12, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase' as const, letterSpacing: '1px' },
+    footerLinksList: { display: 'flex', gap: 18, flexWrap: 'wrap' as const } as React.CSSProperties,
+    footerLink: { fontSize: 13, color: '#94a3b8', textDecoration: 'none' },
+    disclosure: { padding: '18px 22px', borderRadius: 12, background: 'rgba(15,23,42,0.7)', border: '1px solid rgba(234,179,8,0.25)', marginBottom: 28 },
+    discBadge: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#fbbf24', letterSpacing: '0.8px', marginBottom: 8 } as React.CSSProperties,
+    discText: { fontSize: 12, color: '#94a3b8', lineHeight: 1.6, margin: 0 },
+    footerBottom: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 20, borderTop: '1px solid rgba(148,163,184,0.08)', fontSize: 12, color: '#64748b', flexWrap: 'wrap' as const, gap: 10 } as React.CSSProperties,
+  };
+
   return (
-    <div className="homepage">
-      {/* ─── 1. Professional Navigation Bar ───────────────────────────────── */}
-      <header className="home-topbar">
-        <div className="topbar-container">
-          {/* Left Area: Logo, Name, Subtitle */}
-          <div className="topbar-left">
-            <div className="topbar-logo-badge">
-              <Droplets size={22} className="brand-drop-icon" />
-            </div>
-            <div className="topbar-brand-copy">
-              <span className="brand-name">Blood Navigator</span>
-              <span className="brand-sub">Time-Aware Blood Logistics</span>
+    <div style={{ minHeight: '100vh', background: '#050810', color: '#f1f5f9', overflowX: 'hidden', fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif" }}>
+      {/* ─── 1. Navigation Bar ─────────────────────────────────────────────── */}
+      <header style={S.topbar}>
+        <div style={S.topbarInner}>
+          <div style={S.topbarLeft}>
+            <div style={S.logoBadge}><Droplets size={20} /></div>
+            <div style={S.brandCol}>
+              <span style={S.brandName}>Blood Navigator</span>
+              <span style={S.brandSub}>Time-Aware Blood Logistics</span>
             </div>
           </div>
 
-          {/* Center Area: Spaced Navigation Links */}
-          <nav className="topbar-center">
-            <a href="#story-stage" className="nav-item">Emergency Story</a>
-            <a href="#how-it-works" className="nav-item">Workflow</a>
-            <a href="#dsa-section" className="nav-item">DSA in Action</a>
+          <nav className="topbar-center" style={S.navCenter}>
+            <a href="#story-stage" style={S.navLink}>Emergency Story</a>
+            <a href="#how-it-works" style={S.navLink}>Workflow</a>
+            <a href="#dsa-section" style={S.navLink}>DSA in Action</a>
           </nav>
 
-          {/* Right Area: Prominent Enter Dashboard CTA */}
-          <div className="topbar-right">
-            <Link href="/dashboard" className="topbar-cta-btn">
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <Link href="/dashboard" style={S.ctaBtn}>
               <span>Enter Dashboard</span>
-              <ArrowRight size={15} />
+              <ArrowRight size={14} />
             </Link>
           </div>
         </div>
       </header>
 
-      {/* ─── 2. Redesigned Hero Section ───────────────────────────────────── */}
-      <section className="hero-section">
+      {/* ─── 2. Hero Section ───────────────────────────────────────────────── */}
+      <section style={S.heroSection}>
         <div className="hero-bg-effects">
           <div className="hero-grid" />
           <div className="hero-glow hero-glow-1" />
           <div className="hero-glow hero-glow-2" />
         </div>
 
-        <div className="hero-content">
-          <div className="hero-eyebrow">
-            <span className="eyebrow-dot" />
-            <span className="eyebrow-text">TIME-AWARE BLOOD LOGISTICS</span>
+        <div style={S.heroContent}>
+          <div style={S.eyebrow}>
+            <span style={S.eyebrowDot} />
+            <span style={S.eyebrowText}>TIME-AWARE BLOOD LOGISTICS</span>
           </div>
 
-          <h1 className="hero-headline">
+          <h1 style={S.headline}>
             Every Minute Matters.<br />
-            <span className="hero-headline-accent">Every Unit Counts.</span>
+            <span style={S.headlineAccent}>Every Unit Counts.</span>
           </h1>
 
-          <p className="hero-description">
+          <p style={S.heroDesc}>
             An intelligent emergency redistribution system evaluating biological shelf life,
             flight travel times, and processing buffers across regional blood banks to prevent
             transfusion wastage and deliver critical units when seconds matter.
           </p>
 
-          <div className="hero-cta-group">
-            <button onClick={scrollToStory} className="hero-btn-primary">
+          <div style={S.ctaGroup}>
+            <button onClick={scrollToStory} style={S.btnPrimary}>
               <Play size={16} />
               <span>Watch the Emergency Story</span>
             </button>
-            <Link href="/dashboard" className="hero-btn-secondary">
+            <Link href="/dashboard" style={S.btnSecondary}>
               <Activity size={16} />
               <span>Explore Blood Navigator</span>
             </Link>
           </div>
         </div>
 
-        {/* ─── 3. Centerpiece Animation Stage ─────────────────────────────── */}
-        <div className="story-player-stage" id="story-stage">
-          {/* Stage Header Info Bar */}
-          <div className="stage-header-bar">
-            <div className="stage-info-left">
-              <span className="stage-num-pill">STAGE 0{currentScene + 1} / 07</span>
-              <span className="stage-title-text">{SCENES[currentScene].title}</span>
+        {/* ─── 3. Centerpiece Animation Stage ──────────────────────────────── */}
+        <div id="story-stage" style={S.stageContainer}>
+          {/* Stage Header */}
+          <div style={S.stageHeader}>
+            <div style={S.stageInfoLeft}>
+              <span style={S.stagePill}>STAGE 0{currentScene + 1} / 07</span>
+              <span style={S.stageTitle}>{SCENES[currentScene].title}</span>
             </div>
-
-            <div className="stage-info-right">
-              <span className="stage-status-indicator">
-                <span className="pulse-ping" />
-                <span className="status-label">SIMULATION · ACTIVE</span>
-              </span>
+            <div style={S.statusBadge}>
+              <span style={S.pulseDot} />
+              <span>SIMULATION · ACTIVE</span>
             </div>
           </div>
 
-          {/* Continuous Progress Bar */}
-          <div className="stage-progress-track">
+          {/* Progress Bar */}
+          <div style={S.progressTrack}>
             <motion.div
               key={currentScene + (isPlaying ? '-play' : '-pause')}
-              className="stage-progress-fill"
+              style={S.progressFill}
               initial={{ width: '0%' }}
               animate={{ width: isPlaying ? '100%' : '50%' }}
               transition={{
@@ -928,50 +1433,41 @@ export default function HomePage() {
             />
           </div>
 
-          {/* Seven-Stage Separated Stepper */}
-          <div className="stage-stepper-row">
+          {/* Seven-Stage Timeline */}
+          <div style={S.stepperRow} className="stage-stepper-row">
             {SCENES.map((scene, idx) => {
               const isActive = currentScene === idx;
               const isPast = currentScene > idx;
               return (
                 <button
                   key={scene.id}
-                  className={`stepper-node ${isActive ? 'active' : ''} ${isPast ? 'completed' : ''}`}
-                  onClick={() => {
-                    setCurrentScene(idx);
-                    setIsPlaying(false);
-                  }}
-                  title={`View Stage 0${idx + 1}: ${scene.title}`}
+                  style={S.stepperNode(isActive, isPast)}
+                  onClick={() => { setCurrentScene(idx); setIsPlaying(false); }}
+                  title={`Stage 0${idx + 1}: ${scene.title}`}
                 >
-                  <div className="node-marker">
+                  <div style={S.nodeMarker(isActive, isPast)}>
                     {isPast ? <CheckCircle2 size={12} /> : <span>0{idx + 1}</span>}
                   </div>
-                  <span className="node-label">{scene.title}</span>
+                  <span style={S.nodeLabel(isActive, isPast)}>{scene.title}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* Phenotype Picker (Interactive on Scene 3) */}
+          {/* Blood Group Picker (Scene 3 only) */}
           {currentScene === 2 && (
-            <div className="stage-phenotype-bar">
-              <span className="picker-hint">Select Patient Blood Type:</span>
-              <div className="picker-chips">
+            <div style={S.phenoBar}>
+              <span style={{ fontWeight: 600, color: '#94a3b8' }}>Select Blood Type:</span>
+              <div style={{ display: 'flex', gap: 8 }}>
                 {BLOOD_GROUPS.map((bg) => (
-                  <button
-                    key={bg}
-                    className={`bg-chip ${selectedBloodGroup === bg ? 'active' : ''}`}
-                    onClick={() => setSelectedBloodGroup(bg)}
-                  >
-                    {bg}
-                  </button>
+                  <button key={bg} style={S.bgChip(selectedBloodGroup === bg)} onClick={() => setSelectedBloodGroup(bg)}>{bg}</button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Active SVG Animation Canvas */}
-          <div className="stage-viewport-box">
+          {/* SVG Animation Canvas */}
+          <div style={{ width: '100%', background: '#060913' }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentScene}
@@ -979,258 +1475,196 @@ export default function HomePage() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.01 }}
                 transition={{ duration: reducedMotion ? 0.01 : 0.3 }}
-                className="w-full"
+                style={{ width: '100%' }}
               >
                 {renderActiveScene()}
               </motion.div>
             </AnimatePresence>
           </div>
 
-          {/* Dedicated Toolbar & Controls */}
-          <div className="stage-toolbar-footer">
-            <div className="stage-caption-block">
-              <span className="caption-heading">{SCENES[currentScene].title}</span>
-              <p className="caption-description">{SCENES[currentScene].desc}</p>
+          {/* Dedicated Playback Controller & Narration Bar */}
+          <div style={S.toolbarFooter}>
+            <div style={S.captionBlock}>
+              <div style={S.captionBadge}>
+                <Sparkles size={12} />
+                <span>STAGE NARRATION · 0{currentScene + 1} OF 07</span>
+              </div>
+              <span style={S.captionTitle}>{SCENES[currentScene].title}</span>
+              <p style={S.captionDesc}>{SCENES[currentScene].desc}</p>
             </div>
-
-            <div className="stage-controls-toolbar">
+            <div style={S.controlsRow}>
               {isPlaying ? (
-                <button className="toolbar-btn btn-primary-action" onClick={handlePause} title="Pause story playback">
-                  <Pause size={15} />
+                <button style={S.tbBtn('primary')} onClick={handlePause} title="Pause story playback">
+                  <Pause size={14} />
                   <span>Pause</span>
                 </button>
               ) : (
-                <button className="toolbar-btn btn-primary-action" onClick={handlePlay} title="Resume story playback">
-                  <Play size={15} />
+                <button style={S.tbBtn('primary')} onClick={handlePlay} title="Play story sequence">
+                  <Play size={14} />
                   <span>Play Story</span>
                 </button>
               )}
-
-              <button className="toolbar-btn btn-secondary-action" onClick={handleReplay} title="Replay from beginning">
-                <RotateCcw size={15} />
+              <button style={S.tbBtn('secondary')} onClick={handleReplay} title="Replay from Scene 1">
+                <RotateCcw size={14} />
                 <span>Replay</span>
               </button>
-
-              <button className="toolbar-btn btn-secondary-action" onClick={handleSkip} title="Advance to next scene">
-                <SkipForward size={15} />
+              <button style={S.tbBtn('secondary')} onClick={handleSkip} title="Skip to next scene">
+                <SkipForward size={14} />
                 <span>Skip Scene</span>
               </button>
 
-              <Link href="/dashboard" className="toolbar-btn btn-enter-action" title="Open the full Blood Navigator application">
+              <div style={S.dividerVertical} />
+
+              <Link href="/dashboard" style={S.tbBtn('enter')}>
                 <span>Enter Blood Navigator</span>
-                <ArrowRight size={15} />
+                <ArrowRight size={14} />
               </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ─── 4. Project Explanation Sections ──────────────────────────────── */}
-      
-      {/* Problem & Solution */}
-      <section className="home-section" id="how-it-works">
-        <div className="section-header-block">
-          <div className="section-badge">
-            <Shield size={13} />
-            <span>THE CHALLENGE &amp; THE SOLUTION</span>
-          </div>
-          <h2 className="section-headline">Perishable Inventory vs. Emergency Shortages</h2>
-          <p className="section-subtext">
+      {/* ─── 4. Problem & Solution ─────────────────────────────────────────── */}
+      <section id="how-it-works" style={S.section}>
+        <div style={S.sectionHeader}>
+          <div style={S.sectionBadge}><Shield size={13} /><span>THE CHALLENGE &amp; THE SOLUTION</span></div>
+          <h2 style={S.sectionTitle}>Perishable Inventory vs. Emergency Shortages</h2>
+          <p style={S.sectionSub}>
             Blood components have non-negotiable shelf lives. When facilities operate as isolated islands,
             life-saving blood expires on one shelf while nearby trauma victims face catastrophic deficits.
           </p>
         </div>
 
-        <div className="cards-two-column">
-          {/* The Problem Card */}
-          <div className="info-feature-card problem-card">
-            <div className="card-top-icon red-icon">
-              <AlertTriangle size={24} />
-            </div>
-            <h3>The Perishability Dilemma</h3>
-            <p>
+        <div style={S.twoCol}>
+          <div style={S.featureCard}>
+            <div style={S.cardIcon('red')}><AlertTriangle size={22} /></div>
+            <h3 style={S.cardH3}>The Perishability Dilemma</h3>
+            <p style={S.cardP}>
               Platelet components degrade within 5 days; packed red blood cells expire in 35–42 days.
-              Manual phone-based redistribution between regional hospitals is too slow, uncoordinated, and
-              frequently results in expired stock being condemned to biohazard incinerators.
+              Manual phone-based redistribution is too slow, uncoordinated, and frequently results in
+              expired stock being condemned to biohazard incinerators.
             </p>
-            <div className="card-stat-pill red-stat">
-              <Timer size={14} />
-              <span>Strict biological expiry limits eliminate room for transport delay</span>
-            </div>
+            <div style={S.statPill('red')}><Timer size={14} /><span>Strict biological expiry limits eliminate room for transport delay</span></div>
           </div>
-
-          {/* The Solution Card */}
-          <div className="info-feature-card solution-card">
-            <div className="card-top-icon cyan-icon">
-              <CheckCircle size={24} />
-            </div>
-            <h3>Autonomous Time-Aware Redistribution</h3>
-            <p>
+          <div style={S.featureCard}>
+            <div style={S.cardIcon('cyan')}><CheckCircle size={22} /></div>
+            <h3 style={S.cardH3}>Autonomous Time-Aware Redistribution</h3>
+            <p style={S.cardP}>
               Blood Navigator evaluates multi-facility inventory states in real time. It calculates net usable shelf life:
               subtracting estimated flight transit, clinical cross-matching, and buffer margins to guarantee only time-viable
               units are dispatched via rapid corridors.
             </p>
-            <div className="card-stat-pill cyan-stat">
-              <Cpu size={14} />
-              <span>Guaranteed mathematical feasibility prior to physical dispatch</span>
-            </div>
+            <div style={S.statPill('cyan')}><Cpu size={14} /><span>Guaranteed mathematical feasibility prior to physical dispatch</span></div>
           </div>
         </div>
       </section>
 
-      {/* Connected Workflow */}
-      <section className="home-section">
-        <div className="section-header-block">
-          <div className="section-badge">
-            <ClipboardList size={13} />
-            <span>CONNECTED PIPELINE</span>
-          </div>
-          <h2 className="section-headline">How Blood Navigator Operates</h2>
-          <p className="section-subtext">
+      {/* ─── 5. Connected Workflow Pipeline ─────────────────────────────────── */}
+      <section style={S.section}>
+        <div style={S.sectionHeader}>
+          <div style={S.sectionBadge}><ClipboardList size={13} /><span>CONNECTED PIPELINE</span></div>
+          <h2 style={S.sectionTitle}>How Blood Navigator Operates</h2>
+          <p style={S.sectionSub}>
             A cohesive five-stage automated pipeline transforming emergency demand into verified, dispatched transfusions.
           </p>
         </div>
 
-        <div className="workflow-stepper-grid">
+        <div style={S.workflowGrid}>
           {[
-            {
-              step: '01',
-              title: 'Inventory Monitoring',
-              desc: 'Continuous tracking of regional blood units, indexed by remaining viability minutes and donor groups.',
-              icon: Clock
-            },
-            {
-              step: '02',
-              title: 'Request Evaluation',
-              desc: 'Hospital trauma centers log urgent requisitions processed in strict chronological FIFO arrival order.',
-              icon: ClipboardList
-            },
-            {
-              step: '03',
-              title: 'Feasibility Calculation',
-              desc: 'Dynamic formula verification: Remaining Shelf Life − (Transit + Processing + Safety Buffer) > 0.',
-              icon: Timer
-            },
-            {
-              step: '04',
-              title: 'Route Planning',
-              desc: 'Dijkstra shortest-path algorithm computes minimum-time waypoint trajectories across the blood corridor.',
-              icon: Network
-            },
-            {
-              step: '05',
-              title: 'Simulated Delivery Tracking',
-              desc: 'Real-time telemetry streams monitor drone progress with automatic recalculation upon en-route weather delays.',
-              icon: Plane
-            },
+            { step: '01', title: 'Inventory Monitoring', desc: 'Continuous tracking of regional blood units, indexed by remaining viability minutes and donor groups.', icon: Clock },
+            { step: '02', title: 'Request Evaluation', desc: 'Hospital trauma centers log urgent requisitions processed in strict chronological FIFO arrival order.', icon: ClipboardList },
+            { step: '03', title: 'Feasibility Calculation', desc: 'Dynamic formula verification: Remaining Shelf Life − (Transit + Processing + Safety Buffer) > 0.', icon: Timer },
+            { step: '04', title: 'Route Planning', desc: 'Dijkstra shortest-path algorithm computes minimum-time waypoint trajectories across the blood corridor.', icon: Network },
+            { step: '05', title: 'Simulated Delivery Tracking', desc: 'Real-time telemetry streams monitor drone progress with automatic recalculation upon en-route weather delays.', icon: Plane },
           ].map((item, idx) => (
-            <div key={idx} className="workflow-card">
-              <div className="workflow-step-num">{item.step}</div>
-              <div className="workflow-card-body">
-                <div className="workflow-icon-wrap">
-                  <item.icon size={18} />
-                </div>
-                <h4>{item.title}</h4>
-                <p>{item.desc}</p>
+            <div key={idx} style={S.workflowCard}>
+              <div style={S.workflowNum}>{item.step}</div>
+              <div>
+                <div style={S.workflowIcon}><item.icon size={18} /></div>
+                <h4 style={S.wfH4}>{item.title}</h4>
+                <p style={S.wfP}>{item.desc}</p>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* DSA in Action Section */}
-      <section className="home-section" id="dsa-section">
-        <div className="section-header-block">
-          <div className="section-badge">
-            <Cpu size={13} />
-            <span>ACADEMIC FOUNDATION</span>
-          </div>
-          <h2 className="section-headline">Data Structures &amp; Algorithms in Action</h2>
-          <p className="section-subtext">
+      {/* ─── 6. DSA in Action ──────────────────────────────────────────────── */}
+      <section id="dsa-section" style={S.section}>
+        <div style={S.sectionHeader}>
+          <div style={S.sectionBadge}><Cpu size={13} /><span>ACADEMIC FOUNDATION</span></div>
+          <h2 style={S.sectionTitle}>Data Structures &amp; Algorithms in Action</h2>
+          <p style={S.sectionSub}>
             Every operational feature in Blood Navigator directly maps to foundational data structures
             and algorithms implemented in the core codebase.
           </p>
         </div>
 
-        <div className="dsa-showcase-grid">
+        <div style={S.dsaGrid}>
           {DSA_ITEMS.map((dsa, i) => (
-            <div key={i} className="dsa-showcase-card">
-              <div className="dsa-card-header">
-                <div className="dsa-icon-badge" style={{ background: `${dsa.color}15`, color: dsa.color }}>
-                  <dsa.icon size={20} />
-                </div>
-                <span className="dsa-tag-badge">{dsa.tag}</span>
+            <div key={i} style={S.dsaCard}>
+              <div style={S.dsaHeader}>
+                <div style={S.dsaIconBadge(`${dsa.color}15`, dsa.color)}><dsa.icon size={18} /></div>
+                <span style={S.dsaTag}>{dsa.tag}</span>
               </div>
-              <h4 className="dsa-card-title">{dsa.name}</h4>
-              <p className="dsa-card-text">{dsa.usage}</p>
+              <h4 style={S.dsaCardTitle}>{dsa.name}</h4>
+              <p style={S.dsaCardText}>{dsa.usage}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ─── 5. Call to Action Banner ─────────────────────────────────────── */}
-      <section className="home-section cta-banner-section">
-        <div className="cta-banner-box">
-          <div className="cta-icon-glow">
-            <Droplets size={36} />
-          </div>
-          <h2 className="cta-title">Explore the Blood Navigator Platform</h2>
-          <p className="cta-text">
+      {/* ─── 7. Call to Action Banner ──────────────────────────────────────── */}
+      <section style={{ ...S.section, paddingBottom: 60 }}>
+        <div style={S.ctaBanner}>
+          <div style={S.ctaIconGlow}><Droplets size={32} /></div>
+          <h2 style={S.ctaTitle}>Explore the Blood Navigator Platform</h2>
+          <p style={S.ctaText}>
             Access the full operational interface: inspect multi-bank inventory balances,
             run live Dijkstra flight path simulations, test the feasibility matrix, and audit reversible transactions.
           </p>
-          <div className="cta-button-row">
-            <Link href="/dashboard" className="hero-btn-primary">
-              <Activity size={16} />
-              <span>Enter Blood Navigator Dashboard</span>
-            </Link>
-            <button onClick={scrollToStory} className="hero-btn-secondary">
-              <Play size={16} />
-              <span>Watch Emergency Story</span>
-            </button>
+          <div style={S.ctaGroup}>
+            <Link href="/dashboard" style={S.btnPrimary}><Activity size={16} /><span>Enter Blood Navigator Dashboard</span></Link>
+            <button onClick={scrollToStory} style={S.btnSecondary}><Play size={16} /><span>Watch Emergency Story</span></button>
           </div>
         </div>
       </section>
 
-      {/* ─── 6. Footer and Educational Disclosure ─────────────────────────── */}
-      <footer className="home-footer">
-        <div className="footer-inner">
-          <div className="footer-top-row">
-            <div className="footer-brand-meta">
-              <div className="footer-brand-title">
-                <Droplets size={20} className="text-red-500" />
+      {/* ─── 8. Footer ─────────────────────────────────────────────────────── */}
+      <footer style={S.footer}>
+        <div style={S.footerInner}>
+          <div style={S.footerTop}>
+            <div>
+              <div style={S.footerBrandTitle}>
+                <Droplets size={18} style={{ color: '#ef4444' }} />
                 <span>Blood Navigator</span>
               </div>
-              <p className="footer-brand-desc">
+              <p style={S.footerBrandDesc}>
                 A Time-Aware Blood Expiry Monitoring and Inventory Redistribution System with Drone Route Simulation.
               </p>
             </div>
-
-            <div className="footer-links-group">
-              <span className="footer-group-title">Application Modules</span>
-              <div className="footer-links-list">
-                <Link href="/dashboard">Dashboard</Link>
-                <Link href="/inventory">Inventory Matrix</Link>
-                <Link href="/requests">Requisitions</Link>
-                <Link href="/drone-simulation">Drone Simulation</Link>
-                <Link href="/reports">Analytics &amp; Audit</Link>
+            <div style={S.footerLinksGroup}>
+              <span style={S.footerGroupTitle}>Application Modules</span>
+              <div style={S.footerLinksList}>
+                <Link href="/dashboard" style={S.footerLink}>Dashboard</Link>
+                <Link href="/inventory" style={S.footerLink}>Inventory Matrix</Link>
+                <Link href="/requests" style={S.footerLink}>Requisitions</Link>
+                <Link href="/drone-simulation" style={S.footerLink}>Drone Simulation</Link>
+                <Link href="/reports" style={S.footerLink}>Analytics &amp; Audit</Link>
               </div>
             </div>
           </div>
 
-          <div className="footer-disclosure-card">
-            <div className="disclosure-badge">
-              <Info size={14} />
-              <span>ACADEMIC SIMULATION DISCLOSURE</span>
-            </div>
-            <p className="disclosure-text">
+          <div style={S.disclosure}>
+            <div style={S.discBadge}><Info size={14} /><span>ACADEMIC SIMULATION DISCLOSURE</span></div>
+            <p style={S.discText}>
               Blood Navigator is an academic software demonstration engineered for the Data Structures and Algorithms internal assessment (SET-2).
               All blood bank registries, specimen numbers, hospital requirements, and drone trajectories are simulated models designed
               to benchmark computational efficiency. This system is not connected to active clinical delivery hardware or live blood supply lines.
             </p>
           </div>
 
-          <div className="footer-bottom-copy">
+          <div style={S.footerBottom}>
             <span>© 2026 Blood Navigator · Data Structures and Algorithms Internal Assessment Project</span>
             <span>Next.js 16 (Turbopack) · High-Performance Hematology Logistics Engine</span>
           </div>

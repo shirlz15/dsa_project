@@ -3,9 +3,11 @@
 import { useStore } from '@/lib/store';
 import {
   Plane, Play, Pause, Square, RotateCcw, Zap, AlertTriangle,
-  RotateCw, Layers, ShieldAlert, CheckCircle, Info, Sparkles
+  RotateCw, Layers, ShieldAlert, CheckCircle, Info, Sparkles, ArrowRight
 } from 'lucide-react';
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { bfs, dfs, dijkstra, GraphAlgorithmResult, CircularQueue } from '@/lib/dsa-engine';
 import { GraphNode, GraphEdge, AlgorithmStep, DroneTelemetryEvent } from '@/lib/types';
 
@@ -13,11 +15,31 @@ type AlgoType = 'bfs' | 'dfs' | 'dijkstra';
 
 const RING_CAPACITY = 8;
 
-export default function DroneSimulationPage() {
+function DroneSimulationContent() {
   const graphState = useStore((s) => s.graphState);
   const bloodBanks = useStore((s) => s.bloodBanks);
   const addMission = useStore((s) => s.addMission);
   const getNow = useStore((s) => s.getNow);
+  const transfers = useStore((s) => s.transfers);
+  const dispatchTransfer = useStore((s) => s.dispatchTransfer);
+  const delayTransfer = useStore((s) => s.delayTransfer);
+  const updateTransfer = useStore((s) => s.updateTransfer);
+
+  const searchParams = useSearchParams();
+  const paramTransferId = searchParams.get('transferId');
+
+  // Connected transfer state
+  const [activeTransferId, setActiveTransferId] = useState<string>(paramTransferId || '');
+
+  useEffect(() => {
+    if (paramTransferId) {
+      setActiveTransferId(paramTransferId);
+    }
+  }, [paramTransferId]);
+
+  const activeTransfer = useMemo(() => {
+    return transfers.find((t) => t.id === activeTransferId) || null;
+  }, [transfers, activeTransferId]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
@@ -51,6 +73,45 @@ export default function DroneSimulationPage() {
   useEffect(() => {
     dronePosRef.current = dronePos;
   }, [dronePos]);
+
+  // Sync endpoints from active transfer
+  useEffect(() => {
+    if (activeTransfer) {
+      const srcNode = graphState.nodes.find(
+        (n) => n.id.includes(activeTransfer.sourceBankId) || n.label.toLowerCase().includes(activeTransfer.sourceBankId.toLowerCase())
+      );
+      const dstNode = graphState.nodes.find(
+        (n) => n.id.includes(activeTransfer.destinationBankId) || n.label.toLowerCase().includes(activeTransfer.destinationBankId.toLowerCase())
+      );
+
+      const sId =
+        srcNode?.id ||
+        (activeTransfer.sourceBankId === 'bb-1'
+          ? 'n-bb1'
+          : activeTransfer.sourceBankId === 'bb-2'
+          ? 'n-bb2'
+          : activeTransfer.sourceBankId === 'bb-3'
+          ? 'n-bb3'
+          : activeTransfer.sourceBankId === 'bb-4'
+          ? 'n-bb4'
+          : 'n-bb5');
+
+      const dId =
+        dstNode?.id ||
+        (activeTransfer.destinationBankId === 'bb-1'
+          ? 'n-bb1'
+          : activeTransfer.destinationBankId === 'bb-2'
+          ? 'n-bb2'
+          : activeTransfer.destinationBankId === 'bb-3'
+          ? 'n-bb3'
+          : activeTransfer.destinationBankId === 'bb-4'
+          ? 'n-bb4'
+          : 'n-bb5');
+
+      setSourceNode(sId);
+      setDestNode(dId);
+    }
+  }, [activeTransfer, graphState.nodes]);
 
   // ─── DSA: Fixed-Capacity Circular Queue for Simulation Telemetry ───────────
   const telemetryQueueRef = useRef(new CircularQueue<DroneTelemetryEvent>(RING_CAPACITY));
@@ -99,9 +160,15 @@ export default function DroneSimulationPage() {
     if (!sourceNode || !destNode) return;
     let result: GraphAlgorithmResult;
     switch (algorithm) {
-      case 'bfs': result = bfs(graphState.nodes, graphState.edges, sourceNode, destNode); break;
-      case 'dfs': result = dfs(graphState.nodes, graphState.edges, sourceNode, destNode); break;
-      case 'dijkstra': result = dijkstra(graphState.nodes, graphState.edges, sourceNode, destNode); break;
+      case 'bfs':
+        result = bfs(graphState.nodes, graphState.edges, sourceNode, destNode);
+        break;
+      case 'dfs':
+        result = dfs(graphState.nodes, graphState.edges, sourceNode, destNode);
+        break;
+      case 'dijkstra':
+        result = dijkstra(graphState.nodes, graphState.edges, sourceNode, destNode);
+        break;
     }
     setRouteResult(result);
     setAlgoSteps(result.steps);
@@ -135,10 +202,15 @@ export default function DroneSimulationPage() {
   // Add Weather / Airspace Delay
   const handleAddDelay = (min: number) => {
     setSimulatedDelay((d) => d + min);
+    if (activeTransfer) {
+      delayTransfer(activeTransfer.id, min);
+    }
     pushTelemetry(
       'transport_delay',
       `Introduced simulated airspace delay: +${min}m (Total delay: ${simulatedDelay + min}m)`,
-      'Simulated adverse weather / corridor congestion requiring speed adjustment'
+      activeTransfer
+        ? `Recalculated transfer ${activeTransfer.id} feasibility in store`
+        : 'Simulated adverse weather / corridor congestion requiring speed adjustment'
     );
   };
 
@@ -151,9 +223,20 @@ export default function DroneSimulationPage() {
       return;
     }
 
+    // Connect transfer state transition: dispatched / in_transit
+    if (activeTransfer) {
+      if (activeTransfer.status === 'approved' || activeTransfer.status === 'proposed') {
+        dispatchTransfer(activeTransfer.id);
+      }
+    }
+
     setSimState('running');
     setMissionStatus('SIMULATED — Drone airborne on flight corridor');
-    pushTelemetry('mission_started', `Mission started from ${sourceNode} to ${destNode}`, `Route: ${routeResult.path.join(' → ')}`);
+    pushTelemetry(
+      'mission_started',
+      `Mission started from ${sourceNode} to ${destNode}${activeTransfer ? ` (Transfer ${activeTransfer.id})` : ''}`,
+      `Route: ${routeResult.path.join(' → ')}`
+    );
 
     const path = routeResult.path;
     const pathNodes = path.map((id) => graphState.nodes.find((n) => n.id === id)!).filter(Boolean);
@@ -185,7 +268,20 @@ export default function DroneSimulationPage() {
           setProgress(100);
           setSimState('completed');
           setMissionStatus('SIMULATED — Drone arrived at destination (awaiting receipt confirmation)');
-          pushTelemetry('eta_updated', `Drone reached destination ${destNode} safely`, 'Completed flight leg');
+
+          // Update canonical transfer status to arrived
+          if (activeTransfer) {
+            updateTransfer(activeTransfer.id, {
+              status: 'arrived',
+              arrivedAt: new Date().toISOString(),
+            });
+          }
+
+          pushTelemetry(
+            'eta_updated',
+            `Drone reached destination ${destNode} safely`,
+            activeTransfer ? `Transfer ${activeTransfer.id} marked arrived. Ready for handover verification.` : 'Completed flight leg'
+          );
           return;
         }
       }
@@ -202,16 +298,44 @@ export default function DroneSimulationPage() {
 
     animationRef.current = requestAnimationFrame(animate);
 
-    // Create mission record
+    // Create mission record linked to exact transfer
     addMission({
-      droneId: 'drone-alpha-1', transferId: null, sourceBankId: sourceNode, destinationBankId: destNode,
-      status: 'flying', routeNodes: path, routeDistance: routeResult.distance,
-      routeCost: routeResult.distance, speed, batteryPercent: battery,
-      batteryReserve, estimatedFlightTime,
+      droneId: 'drone-alpha-1',
+      transferId: activeTransfer?.id || null,
+      sourceBankId: sourceNode,
+      destinationBankId: destNode,
+      status: 'flying',
+      routeNodes: path,
+      routeDistance: routeResult.distance,
+      routeCost: routeResult.distance,
+      speed,
+      batteryPercent: battery,
+      batteryReserve,
+      estimatedFlightTime,
       estimatedArrival: new Date(getNow() + estimatedFlightTime * 60000).toISOString(),
-      progress: 0, currentPosition: dronePos, startedAt: new Date().toISOString(), completedAt: null,
+      progress: 0,
+      currentPosition: dronePos,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
     });
-  }, [routeResult, battery, batteryReserve, batteryFeasible, speed, graphState.nodes, sourceNode, destNode, estimatedFlightTime, getNow, addMission, dronePos, pushTelemetry]);
+  }, [
+    routeResult,
+    battery,
+    batteryReserve,
+    batteryFeasible,
+    speed,
+    graphState.nodes,
+    sourceNode,
+    destNode,
+    estimatedFlightTime,
+    getNow,
+    addMission,
+    dronePos,
+    pushTelemetry,
+    activeTransfer,
+    dispatchTransfer,
+    updateTransfer,
+  ]);
 
   // Canvas rendering
   useEffect(() => {
@@ -226,8 +350,18 @@ export default function DroneSimulationPage() {
     // Background grid
     ctx.strokeStyle = '#E5E7EB';
     ctx.lineWidth = 0.5;
-    for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    for (let x = 0; x < W; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    for (let y = 0; y < H; y += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
 
     // Draw edges
     graphState.edges.forEach((edge) => {
@@ -236,8 +370,10 @@ export default function DroneSimulationPage() {
       if (!from || !to) return;
       const isOnRoute = routeResult?.path.some((id, i) => {
         if (i >= routeResult.path.length - 1) return false;
-        return (routeResult.path[i] === edge.from && routeResult.path[i + 1] === edge.to) ||
-               (routeResult.path[i] === edge.to && routeResult.path[i + 1] === edge.from);
+        return (
+          (routeResult.path[i] === edge.from && routeResult.path[i + 1] === edge.to) ||
+          (routeResult.path[i] === edge.to && routeResult.path[i + 1] === edge.from)
+        );
       });
 
       ctx.beginPath();
@@ -256,73 +392,162 @@ export default function DroneSimulationPage() {
       const mx = (from.x + to.x) / 2;
       const my = (from.y + to.y) / 2;
       ctx.fillStyle = '#6B7280';
-      ctx.font = '10px Inter';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${edge.weight}km`, mx, my - 5);
+      ctx.font = '10px monospace';
+      ctx.fillText(`${edge.weight}km`, mx - 12, my - 4);
     });
 
     // Draw nodes
     graphState.nodes.forEach((node) => {
-      const isVisited = routeResult?.visitedNodes.includes(node.id);
-      const isOnPath = routeResult?.path.includes(node.id);
-      const isSource = node.id === sourceNode;
-      const isDest = node.id === destNode;
+      const isStart = node.id === sourceNode;
+      const isEnd = node.id === destNode;
+      const isOnRoute = routeResult?.path.includes(node.id);
+      const isObstacle = node.type === 'obstacle';
 
       ctx.beginPath();
-      if (node.type === 'obstacle') {
-        ctx.rect(node.x - 16, node.y - 16, 32, 32);
+      ctx.arc(node.x, node.y, isObstacle ? 14 : 10, 0, Math.PI * 2);
+      if (isObstacle) {
         ctx.fillStyle = '#FEE2E2';
-        ctx.strokeStyle = '#F87171';
-      } else if (node.type === 'blood_bank') {
-        ctx.arc(node.x, node.y, 18, 0, Math.PI * 2);
-        ctx.fillStyle = isSource ? '#059669' : isDest ? '#2563EB' : isOnPath ? '#DC2626' : isVisited ? '#DBEAFE' : '#F3F4F6';
-        ctx.strokeStyle = isSource || isDest ? '#1A2744' : isOnPath ? '#DC2626' : '#9CA3AF';
+        ctx.strokeStyle = '#DC2626';
+        ctx.lineWidth = 2;
+      } else if (isStart) {
+        ctx.fillStyle = '#2563EB';
+        ctx.strokeStyle = '#1D4ED8';
+        ctx.lineWidth = 2.5;
+      } else if (isEnd) {
+        ctx.fillStyle = '#059669';
+        ctx.strokeStyle = '#047857';
+        ctx.lineWidth = 2.5;
+      } else if (isOnRoute) {
+        ctx.fillStyle = '#F59E0B';
+        ctx.strokeStyle = '#D97706';
+        ctx.lineWidth = 2;
       } else {
-        ctx.arc(node.x, node.y, 10, 0, Math.PI * 2);
-        ctx.fillStyle = isOnPath ? '#FEF3C7' : isVisited ? '#E0E7FF' : '#F9FAFB';
-        ctx.strokeStyle = isOnPath ? '#D97706' : '#D1D5DB';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.strokeStyle = '#9CA3AF';
+        ctx.lineWidth = 1.5;
       }
-      ctx.lineWidth = (isSource || isDest) ? 3 : 1.5;
       ctx.fill();
       ctx.stroke();
 
-      // Label
-      ctx.fillStyle = '#1A2744';
-      ctx.font = node.type === 'blood_bank' ? 'bold 10px Inter' : '9px Inter';
-      ctx.textAlign = 'center';
-      ctx.fillText(node.label, node.x, node.y + (node.type === 'blood_bank' ? 32 : 22));
+      // Node label
+      ctx.fillStyle = isObstacle ? '#DC2626' : '#111827';
+      ctx.font = isStart || isEnd ? 'bold 11px sans-serif' : '10px sans-serif';
+      ctx.fillText(node.label, node.x - 24, node.y + (isObstacle ? 26 : 22));
     });
 
-    // Draw drone
-    if (simState !== 'idle' || routeResult) {
-      ctx.save();
+    // Draw drone position
+    if (simState === 'running' || simState === 'paused' || simState === 'completed') {
       ctx.beginPath();
-      ctx.arc(dronePos.x, dronePos.y, 9, 0, Math.PI * 2);
-      ctx.fillStyle = simState === 'running' ? '#DC2626' : simState === 'completed' ? '#059669' : '#D97706';
-      ctx.fill();
-      ctx.strokeStyle = '#FFF';
+      ctx.arc(dronePos.x, dronePos.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#DC2626';
+      ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 2;
+      ctx.fill();
       ctx.stroke();
-      // Icon
-      ctx.fillStyle = '#FFF';
-      ctx.font = 'bold 10px Inter';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('✈', dronePos.x, dronePos.y);
-      ctx.restore();
+
+      ctx.fillStyle = '#DC2626';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText('DRONE-1', dronePos.x + 10, dronePos.y - 4);
     }
   }, [graphState, routeResult, sourceNode, destNode, dronePos, simState]);
 
+  const getBankName = (id: string) => bloodBanks.find((b) => b.id === id)?.name || id;
+
   return (
     <>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1>Drone Route Simulation & Telemetry</h1>
-          <p>Graph routing (BFS, DFS, Dijkstra) and fixed-capacity Circular Queue telemetry buffer for blood transport</p>
+          <h1>Drone Operations</h1>
+          <p>Autonomous UAV Air Corridor Simulator &amp; Graph Routing</p>
         </div>
+
+        {activeTransfer && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Link href={`/transfers?transferId=${activeTransfer.id}`} className="btn btn-secondary">
+              Track Custody Record →
+            </Link>
+          </div>
+        )}
       </div>
 
       <div className="page-content">
+        {/* Connected Transfer Banner */}
+        {activeTransfer && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 18,
+              padding: '14px 20px',
+              borderLeft: '4px solid var(--color-primary)',
+              background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(15, 23, 42, 0.95))',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Plane size={18} color="var(--color-primary)" />
+                <span style={{ fontWeight: 700, fontSize: 14 }}>
+                  Simulating Authorized Transfer: {activeTransfer.id}
+                </span>
+                <span className={`badge badge-${activeTransfer.status === 'in_transit' ? 'info' : activeTransfer.status === 'approved' ? 'info' : 'normal'}`}>
+                  {activeTransfer.status.toUpperCase()}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+                Origin: <strong>{getBankName(activeTransfer.sourceBankId)}</strong> → Destination: <strong>{getBankName(activeTransfer.destinationBankId)}</strong> | Usable Shelf Life: <strong style={{ color: activeTransfer.usableTimeAfterTransfer > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>+{activeTransfer.usableTimeAfterTransfer}m</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              {activeTransfer.status === 'arrived' ? (
+                <Link href={`/transfers?transferId=${activeTransfer.id}`} className="btn btn-success btn-sm">
+                  <CheckCircle size={13} /> Complete Handover in Transfers
+                </Link>
+              ) : (
+                <Link href={`/transfers?transferId=${activeTransfer.id}`} className="btn btn-secondary btn-sm">
+                  View in Transfer Tracking
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Operational Flight Metrics */}
+        <div className="stats-grid" style={{ marginBottom: 20 }}>
+          <div className="stat-card">
+            <div className="stat-label">Flight Route Distance</div>
+            <div className="stat-value" style={{ color: 'var(--color-primary)' }}>
+              {routeResult ? `${routeResult.distance} km` : '—'}
+            </div>
+            <div className="stat-desc">{routeResult ? `${routeResult.path.length} hops via ${algorithm.toUpperCase()}` : 'Select valid corridor'}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Battery Level</div>
+            <div className="stat-value" style={{ color: batteryFeasible ? 'var(--color-success)' : 'var(--color-danger)' }}>
+              {battery.toFixed(0)}%
+            </div>
+            <div className="stat-desc">Reserve required: {batteryReserve}% ({batteryFeasible ? 'Safe reserve' : 'Breaches safety reserve'})</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Estimated Flight Time</div>
+            <div className="stat-value" style={{ color: simulatedDelay > 0 ? 'var(--color-warning)' : 'var(--text-primary)' }}>
+              {routeResult ? `${(estimatedFlightTime).toFixed(0)} min` : '—'}
+            </div>
+            <div className="stat-desc">{simulatedDelay > 0 ? `Includes +${simulatedDelay}m corridor delay` : 'Cruising at nominal airspeed'}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Telemetry Ring Buffer</div>
+            <div className="stat-value" style={{ color: 'var(--color-info)' }}>
+              {telemetrySnapshot.size} / {telemetrySnapshot.capacity}
+            </div>
+            <div className="stat-desc">Circular queue bounded events</div>
+          </div>
+        </div>
+
         <div className="grid-2">
           {/* Canvas & Controls */}
           <div>
@@ -330,7 +555,7 @@ export default function DroneSimulationPage() {
               <canvas ref={canvasRef} width={780} height={520} style={{ display: 'block', width: '100%', height: 'auto' }} />
               <div className="sim-controls">
                 <button className="btn btn-primary btn-sm" onClick={startSimulation} disabled={!routeResult || simState === 'running'}>
-                  <Play size={14} /> Start Mission
+                  <Play size={14} /> Start Mission Flight
                 </button>
                 <button
                   className="btn btn-secondary btn-sm"
@@ -371,7 +596,12 @@ export default function DroneSimulationPage() {
             <div className="card" style={{ marginTop: 12 }}>
               <div className="card-body">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, fontSize: 13 }}>
-                  <div><strong>Status:</strong> <span className={`badge badge-${simState === 'running' ? 'flying' : simState === 'completed' ? 'normal' : 'warning'}`}>{missionStatus}</span></div>
+                  <div>
+                    <strong>Status:</strong>{' '}
+                    <span className={`badge badge-${simState === 'running' ? 'flying' : simState === 'completed' ? 'normal' : 'warning'}`}>
+                      {missionStatus}
+                    </span>
+                  </div>
                   <div><strong>Flight Progress:</strong> {progress}%</div>
                   <div><strong>Battery:</strong> <span style={{ color: battery < 30 ? '#DC2626' : '#059669', fontWeight: 600 }}>{battery.toFixed(1)}%</span></div>
                   <div><strong>Route Distance:</strong> {routeResult ? `${routeResult.distance} km` : '—'}</div>
@@ -380,15 +610,23 @@ export default function DroneSimulationPage() {
                 </div>
                 {/* Progress bar */}
                 <div style={{ marginTop: 12, height: 6, background: 'var(--bg-tertiary)', borderRadius: 3 }}>
-                  <div style={{ width: `${progress}%`, height: '100%', background: 'var(--color-primary)', borderRadius: 3, transition: 'width 0.3s' }} />
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${progress}%`,
+                      background: 'var(--color-primary)',
+                      borderRadius: 3,
+                      transition: 'width 0.2s',
+                    }}
+                  />
                 </div>
               </div>
             </div>
 
             {/* Delay simulation controls */}
-            <div className="card" style={{ marginTop: 12, padding: '10px 14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
                   <ShieldAlert size={16} color="var(--color-warning)" />
                   <span>Simulate Real-Time Airspace / Weather Transport Delay:</span>
                 </div>
@@ -404,8 +642,29 @@ export default function DroneSimulationPage() {
           {/* Graph Pathfinding Configuration & Telemetry Ring Buffer */}
           <div>
             <div className="card">
-              <div className="card-header"><h2>Graph Pathfinding Configuration</h2></div>
+              <div className="card-header">
+                <h2>Graph Pathfinding Configuration</h2>
+              </div>
               <div className="card-body">
+                {/* Link to Active Transfer Selector */}
+                {transfers.length > 0 && (
+                  <div className="form-group">
+                    <label className="form-label">Link to Active Transfer Record</label>
+                    <select
+                      className="form-select"
+                      value={activeTransferId}
+                      onChange={(e) => setActiveTransferId(e.target.value)}
+                    >
+                      <option value="">No linked transfer (Manual graph corridor test)</option>
+                      {transfers.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.id} — {getBankName(t.sourceBankId)} → {getBankName(t.destinationBankId)} ({t.status.toUpperCase()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label className="form-label">Source Node (Start Vertex)</label>
                   <select className="form-select" value={sourceNode} onChange={(e) => setSourceNode(e.target.value)}>
@@ -486,48 +745,57 @@ export default function DroneSimulationPage() {
                           padding: '6px 2px',
                           textAlign: 'center',
                           borderRadius: 4,
-                          background: hasData ? (isRear ? 'rgba(220, 38, 38, 0.2)' : 'rgba(255, 255, 255, 0.05)') : 'rgba(0,0,0,0.2)',
-                          border: isFront ? '2px solid var(--color-success)' : isRear ? '2px solid var(--color-danger)' : '1px solid var(--border-color)',
                           fontSize: 10,
+                          background: hasData ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                          border: isFront
+                            ? '2px solid var(--color-primary)'
+                            : isRear
+                            ? '2px solid var(--color-warning)'
+                            : '1px solid var(--border-color)',
+                          position: 'relative',
                         }}
-                        title={slot ? `${slot.eventType}: ${slot.message}` : `Empty slot #${idx}`}
                       >
-                        <div style={{ fontWeight: 600 }}>#{idx}</div>
-                        <div style={{ fontSize: 8, color: 'var(--text-muted)' }}>
-                          {isFront && isRear ? 'F/R' : isFront ? 'FRONT' : isRear ? 'REAR' : hasData ? 'OCC' : 'EMPTY'}
+                        <div style={{ fontWeight: 600, color: hasData ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                          [{idx}]
+                        </div>
+                        <div style={{ fontSize: 8, color: isFront ? 'var(--color-primary)' : isRear ? 'var(--color-warning)' : 'var(--text-muted)' }}>
+                          {isFront && isRear ? 'F/R' : isFront ? 'FRONT' : isRear ? 'REAR' : hasData ? 'DATA' : 'EMPTY'}
                         </div>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Event stream */}
-                <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {telemetrySnapshot.buffer
-                    .filter((e): e is DroneTelemetryEvent => e !== null)
-                    .slice()
-                    .reverse()
-                    .map((ev) => (
-                      <div
-                        key={ev.id}
-                        style={{
-                          padding: '6px 10px',
-                          background: 'rgba(255, 255, 255, 0.02)',
-                          borderRadius: 4,
-                          borderLeft: ev.eventType === 'transport_delay' ? '3px solid var(--color-warning)' : '3px solid var(--color-primary)',
-                          fontSize: 11,
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontWeight: 600 }}>{ev.message}</span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{ev.timestamp}</span>
-                        </div>
-                        {ev.details && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{ev.details}</div>}
+                {/* Event log */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+                  {telemetrySnapshot.buffer.filter((e): e is DroneTelemetryEvent => e !== null).map((event) => (
+                    <div
+                      key={event.id}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 4,
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        borderLeft: `3px solid ${
+                          event.eventType === 'transport_delay'
+                            ? 'var(--color-warning)'
+                            : event.eventType === 'battery_changed'
+                            ? 'var(--color-danger)'
+                            : 'var(--color-info)'
+                        }`,
+                        fontSize: 11,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: 10 }}>
+                        <span>{event.eventType.toUpperCase()}</span>
+                        <span>{event.timestamp}</span>
                       </div>
-                    ))}
+                      <div style={{ color: 'var(--text-primary)', marginTop: 2 }}>{event.message}</div>
+                      {event.details && <div style={{ color: 'var(--text-secondary)', fontSize: 10, marginTop: 1 }}>{event.details}</div>}
+                    </div>
+                  ))}
                   {telemetrySnapshot.size === 0 && (
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: 8 }}>
-                      No telemetry recorded. Calculate route or start mission.
+                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 11, padding: 8 }}>
+                      No telemetry events enqueued yet. Start mission to stream.
                     </div>
                   )}
                 </div>
@@ -535,7 +803,54 @@ export default function DroneSimulationPage() {
             </div>
           </div>
         </div>
+
+        {/* ─── Collapsible: How the algorithm works ────────────────────────── */}
+        <details className="card" style={{ marginTop: 24, border: '1px solid var(--border-color)' }}>
+          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+            <Sparkles size={16} color="var(--color-primary)" />
+            <span>How the algorithm works: Graph Routing (BFS, DFS, Dijkstra) &amp; Circular Queue</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto', fontWeight: 400 }}>Click to expand operational proof</span>
+          </summary>
+          <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', paddingTop: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-primary)', marginBottom: 6 }}>
+                  Graph Traversal &amp; Pathfinding
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <strong>Dijkstra (O(V²)):</strong> Computes the exact minimum Euclidean corridor flight distance avoiding designated no-fly obstacles.
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 4 }}>
+                  <strong>BFS (O(V+E)):</strong> Finds path with minimal intermediate waypoints (unweighted hop count).
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 4 }}>
+                  <strong>DFS (O(V+E)):</strong> Recursive branch exploration exploring deep corridors before backtracking.
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-info)', marginBottom: 6 }}>
+                  Bounded Telemetry Ring Buffer
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <strong>Circular Queue (Capacity {RING_CAPACITY}):</strong> Operates with index wraparound: <code>rear = (rear + 1) % capacity</code>.
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 4 }}>
+                  Fixed capacity bounds memory footprint during high-frequency telemetry updates while preserving the newest events in O(1) time.
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
     </>
+  );
+}
+
+export default function DroneSimulationPage() {
+  return (
+    <Suspense fallback={<div className="page-content" style={{ color: '#94a3b8' }}>Loading Drone Operations...</div>}>
+      <DroneSimulationContent />
+    </Suspense>
   );
 }
