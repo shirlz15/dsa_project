@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useStore, DEFAULT_ADMIN_USER } from '@/lib/store';
+import { useStore } from '@/lib/store';
 import {
   Shield, User, LogOut, Lock, Key, ChevronDown, Activity,
   Server, AlertTriangle, CheckCircle, Clock, ShieldCheck, Info,
@@ -25,9 +25,6 @@ export default function AdminTopBar() {
   const [showAlertPanel, setShowAlertPanel] = useState(false);
   const [alertFilterTab, setAlertFilterTab] = useState<'all' | 'unread' | 'critical'>('all');
   const [showModeModal, setShowModeModal] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('admin@bloodnavigator.org');
-  const [loginPassword, setLoginPassword] = useState('admin123');
-  const [loginError, setLoginError] = useState('');
   const [mounted, setMounted] = useState(false);
   const [clockTick, setClockTick] = useState(0);
 
@@ -63,183 +60,18 @@ export default function AdminTopBar() {
   const unreadAlerts = alerts.filter((a) => !a.read && !a.resolved).length;
   const criticalAlerts = alerts.filter((a) => !a.resolved && a.severity === 'critical').length;
 
-  const handleManualLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!loginEmail || !loginPassword) {
-      setLoginError('Please enter admin credentials.');
-      return;
+  const handleLogout = async () => {
+    setMenuOpen(false);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
     }
-    // Simulation authentication
-    loginAdmin({
-      ...DEFAULT_ADMIN_USER,
-      email: loginEmail,
-      authenticatedAt: new Date().toISOString(),
-    });
-    setLoginError('');
+    logoutAdmin();
+    window.location.href = '/login';
   };
 
-  const handleQuickDemoLogin = () => {
-    loginAdmin(DEFAULT_ADMIN_USER);
-    setLoginError('');
-  };
 
-  // If unauthenticated, show restricted admin login screen barrier
-  if (!currentUser) {
-    return (
-      <div style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        background: 'radial-gradient(ellipse at center, rgba(13, 17, 29, 0.98), #050810 100%)',
-        backdropFilter: 'blur(20px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-      }}>
-        <div style={{
-          width: '100%',
-          maxWidth: '460px',
-          background: 'rgba(13, 17, 29, 0.92)',
-          border: '1px solid rgba(220, 38, 38, 0.35)',
-          borderRadius: '16px',
-          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.9), 0 0 30px rgba(220, 38, 38, 0.15)',
-          padding: '36px',
-          color: '#f1f5f9',
-          fontFamily: "'Inter', sans-serif",
-        }}>
-          {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <div style={{
-              width: '54px', height: '54px', margin: '0 auto 16px',
-              borderRadius: '14px',
-              background: 'linear-gradient(135deg, #dc2626, #7f1d1d)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 25px rgba(220, 38, 38, 0.5)',
-            }}>
-              <Shield size={28} color="#ffffff" />
-            </div>
-            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.12em', color: '#dc2626', textTransform: 'uppercase', marginBottom: '4px' }}>
-              Restricted Administrative System
-            </div>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.4px', margin: 0 }}>
-              Blood Navigator Admin Login
-            </h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '8px', lineHeight: 1.4 }}>
-              Authorized Blood Bank Network Administrators only. Patient registration and public booking are prohibited.
-            </p>
-          </div>
-
-          {/* Operating Mode Transparency Notice */}
-          <div style={{
-            background: 'rgba(59, 130, 246, 0.08)',
-            border: '1px solid rgba(59, 130, 246, 0.25)',
-            borderRadius: '10px',
-            padding: '12px 14px',
-            marginBottom: '20px',
-            fontSize: '12px',
-            color: '#93c5fd',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '10px',
-          }}>
-            <Server size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#60a5fa' }} />
-            <div>
-              <strong style={{ color: '#bfdbfe' }}>Operating Mode: Demo Simulation</strong>
-              <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>
-                Authentication runs locally in-browser. All sessions and actions update local simulation state without external hospital EHR connection.
-              </div>
-            </div>
-          </div>
-
-          {loginError && (
-            <div style={{
-              background: 'rgba(220, 38, 38, 0.15)',
-              border: '1px solid rgba(220, 38, 38, 0.4)',
-              borderRadius: '8px',
-              padding: '10px 12px',
-              marginBottom: '16px',
-              fontSize: '12px',
-              color: '#fca5a5',
-            }}>
-              {loginError}
-            </div>
-          )}
-
-          {/* Login Form */}
-          <form onSubmit={handleManualLogin}>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#cbd5e1', marginBottom: '6px' }}>
-                Administrator Email / ID
-              </label>
-              <input
-                type="text"
-                className="form-input"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="admin@bloodnavigator.org"
-                style={{ width: '100%' }}
-                required
-              />
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#cbd5e1', marginBottom: '6px' }}>
-                Access Passcode
-              </label>
-              <input
-                type="password"
-                className="form-input"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="••••••••"
-                style={{ width: '100%' }}
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center', padding: '11px', fontSize: '13px', fontWeight: 600 }}
-            >
-              <Lock size={15} /> Authenticate Admin Console
-            </button>
-          </form>
-
-          {/* Quick Demo One-Click Access */}
-          <div style={{ marginTop: '16px', textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '10px' }}>OR INSTANT SIMULATION AUTHORIZATION</div>
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              style={{
-                width: '100%',
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                color: '#e2e8f0',
-                borderRadius: '8px',
-                padding: '9px 12px',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
-            >
-              <Key size={14} color="#f59e0b" />
-              Sign in as Dr. Ramesh Kumar (Network Ops Director)
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Format clock time (only after mount to prevent hydration mismatch)
   const clockDisplay = mounted ? new Date(getNow()).toLocaleTimeString() : '--:--:--';
@@ -698,14 +530,16 @@ export default function AdminTopBar() {
               color: 'white', fontSize: '10px', fontWeight: 800,
               flexShrink: 0,
             }}>
-              RK
+              {currentUser?.name
+                ? currentUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+                : 'AD'}
             </div>
             <div style={{ textAlign: 'left', lineHeight: 1.2 }}>
               <div style={{ fontSize: '11px', fontWeight: 700, color: '#f1f5f9' }}>
-                {currentUser.name}
+                {currentUser?.name || 'Authorized Admin'}
               </div>
               <div style={{ fontSize: '9px', color: '#94a3b8' }}>
-                {currentUser.role}
+                {currentUser?.role || 'Network Operations'}
               </div>
             </div>
             <ChevronDown size={12} color="#64748b" style={{ transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
@@ -731,25 +565,22 @@ export default function AdminTopBar() {
                   Authorized Admin Profile
                 </div>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc', marginTop: '2px' }}>
-                  {currentUser.name}
+                  {currentUser?.name || 'Dr. Ramesh Kumar'}
                 </div>
                 <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                  {currentUser.email}
+                  {currentUser?.email || 'admin@bloodnavigator.org'}
                 </div>
               </div>
 
               <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.6, marginBottom: '14px' }}>
-                <div><strong>Admin ID:</strong> <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>{currentUser.id}</span></div>
-                <div><strong>Facility:</strong> {currentUser.facility}</div>
+                <div><strong>Admin ID:</strong> <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>{currentUser?.id || 'ADMIN-NA-7701'}</span></div>
+                <div><strong>Facility:</strong> {currentUser?.facility || 'State Emergency Logistics Command'}</div>
                 <div><strong>Access Level:</strong> Regional Network Oversight</div>
-                <div><strong>Session:</strong> <span style={{ fontFamily: 'monospace', color: '#38bdf8' }}>{currentUser.sessionToken}</span></div>
+                <div><strong>Session:</strong> <span style={{ fontFamily: 'monospace', color: '#38bdf8' }}>{currentUser?.sessionToken || 'SES-ACTIVE'}</span></div>
               </div>
 
               <button
-                onClick={() => {
-                  setMenuOpen(false);
-                  logoutAdmin();
-                }}
+                onClick={handleLogout}
                 style={{
                   width: '100%',
                   background: 'rgba(220, 38, 38, 0.12)',

@@ -6,9 +6,9 @@ import AdminTopBar from '@/components/AdminTopBar';
 
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isHomepage = pathname === '/';
+  const isPublicPage = pathname === '/' || pathname === '/login';
 
-  if (isHomepage) {
+  if (isPublicPage) {
     return <>{children}</>;
   }
 

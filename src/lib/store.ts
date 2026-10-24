@@ -154,7 +154,10 @@ export const useStore = create<BloodNavigatorStore>()(
   persist(
     (set, get) => ({
       // Admin Authentication & Operating Mode
-      currentUser: DEFAULT_ADMIN_USER,
+      // IMPORTANT: currentUser starts as null — authentication is enforced
+      // server-side via HttpOnly session cookies in proxy.ts and API routes.
+      // The client store is synced from /api/auth/session after mount.
+      currentUser: null,
       operatingMode: 'demo_simulation',
       loginAdmin: (user) => set({ currentUser: user }),
       logoutAdmin: () => set({ currentUser: null }),
@@ -802,7 +805,9 @@ export const useStore = create<BloodNavigatorStore>()(
         graphState: state.graphState,
         demoLoaded: state.demoLoaded,
         demoClockOffset: state.demoClockOffset,
-        currentUser: state.currentUser,
+        // currentUser is NOT persisted to localStorage — the server-side
+        // HttpOnly cookie (bn_admin_session) is the sole proof of authentication.
+        // operatingMode is kept for UI preference persistence.
         operatingMode: state.operatingMode,
       }),
     }
