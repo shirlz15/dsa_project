@@ -3,7 +3,8 @@
 import { useStore } from '@/lib/store';
 import {
   Package, Plus, Search, Filter, Trash2, Undo2, Layers, Link as LinkIcon,
-  Hash, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Info, Sparkles
+  Hash, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Info, Sparkles,
+  Droplets, Truck, ClockAlert
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { BLOOD_TYPES, COMPONENT_TYPES, InventoryUnit, BloodType, ComponentType } from '@/lib/types';
@@ -284,7 +285,7 @@ export default function InventoryPage() {
   // Key metrics
   const totalUnitsCount = useMemo(() => inventory.reduce((acc, u) => acc + u.quantity, 0), [inventory]);
   const availableUnitsCount = useMemo(() => inventory.filter((u) => u.status === 'available').reduce((acc, u) => acc + u.quantity, 0), [inventory]);
-  const inTransitCount = useMemo(() => inventory.filter((u) => u.status === 'in_transit').reduce((acc, u) => acc + u.quantity, 0), [inventory]);
+  const inTransitCount = useMemo(() => inventory.filter((u) => u.status === 'in_transit' || u.status === 'reserved').reduce((acc, u) => acc + u.quantity, 0), [inventory]);
   const atRiskCount = useMemo(() => {
     return inventory.filter((u) => {
       const remaining = new Date(u.expiryTimestamp).getTime() - now;
@@ -316,29 +317,87 @@ export default function InventoryPage() {
       </div>
 
       <div className="page-content">
-        {/* ─── Key Operational Metrics ────────────────────────────────────── */}
-        <div className="stats-grid" style={{ marginBottom: 20 }}>
-          <div className="stat-card">
-            <div className="stat-label">Total Units in Network</div>
-            <div className="stat-value">{totalUnitsCount}</div>
-            <div className="stat-desc">{inventory.length} distinct batch records</div>
+        {/* ─── Key Operational Metrics (Refined Summary Cards) ─────────────── */}
+        <div className="inventory-summary-grid">
+          {/* Card 1: Total Units in Network */}
+          <div className="inventory-summary-card">
+            <div
+              className="inventory-card-icon-box"
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: '#f87171',
+              }}
+            >
+              <Droplets size={18} />
+            </div>
+            <div className="inventory-card-label">Total Units in Network</div>
+            <div className="inventory-card-value" style={{ color: '#f1f5f9' }}>
+              {totalUnitsCount}
+            </div>
+            <div className="inventory-card-desc">
+              {inventory.length} distinct batch records
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Available Stock</div>
-            <div className="stat-value" style={{ color: 'var(--color-success)' }}>{availableUnitsCount}</div>
-            <div className="stat-desc">Ready for release or transfer</div>
+
+          {/* Card 2: Available Stock */}
+          <div className="inventory-summary-card">
+            <div
+              className="inventory-card-icon-box"
+              style={{
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                color: '#34d399',
+              }}
+            >
+              <CheckCircle size={18} />
+            </div>
+            <div className="inventory-card-label">Available Stock</div>
+            <div className="inventory-card-value" style={{ color: '#34d399' }}>
+              {availableUnitsCount}
+            </div>
+            <div className="inventory-card-desc">Ready for release or transfer</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">In Transit / Reserved</div>
-            <div className="stat-value" style={{ color: 'var(--color-info)' }}>{inTransitCount}</div>
-            <div className="stat-desc">En-route or locked for request</div>
+
+          {/* Card 3: In Transit / Reserved */}
+          <div className="inventory-summary-card">
+            <div
+              className="inventory-card-icon-box"
+              style={{
+                background: 'rgba(59, 130, 246, 0.12)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                color: '#60a5fa',
+              }}
+            >
+              <Truck size={18} />
+            </div>
+            <div className="inventory-card-label">In Transit / Reserved</div>
+            <div className="inventory-card-value" style={{ color: inTransitCount > 0 ? '#60a5fa' : '#cbd5e1' }}>
+              {inTransitCount}
+            </div>
+            <div className="inventory-card-desc">En-route or locked for request</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Expiring Soon (≤48h)</div>
-            <div className="stat-value" style={{ color: atRiskCount > 0 ? 'var(--color-warning)' : 'var(--text-muted)' }}>
+
+          {/* Card 4: Expiring Soon (≤48h) */}
+          <div className={`inventory-summary-card ${atRiskCount > 0 ? 'card-urgent' : ''}`}>
+            <div
+              className="inventory-card-icon-box"
+              style={{
+                background: 'rgba(220, 38, 38, 0.15)',
+                border: '1px solid rgba(220, 38, 38, 0.35)',
+                color: '#f87171',
+              }}
+            >
+              <ClockAlert size={18} />
+            </div>
+            <div className="inventory-card-label">Expiring Soon (≤48h)</div>
+            <div
+              className="inventory-card-value"
+              style={{ color: atRiskCount > 0 ? '#f87171' : '#94a3b8' }}
+            >
               {atRiskCount}
             </div>
-            <div className="stat-desc">Candidates for urgent redistribution</div>
+            <div className="inventory-card-desc">Candidates for urgent redistribution</div>
           </div>
         </div>
 
