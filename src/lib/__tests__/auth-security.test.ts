@@ -203,6 +203,65 @@ async function runTests() {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+  // 3.1. Authentication Route Handlers (Credential & Demo Validation)
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log('\n--- 3.1. Authentication Route Handlers (Credential & Demo Validation) ---');
+
+  const { POST: loginHandler } = await import('../../app/api/auth/login/route');
+
+  // A. Missing credentials returns 400
+  const emptyLoginReq = new Request('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: '', password: '' }),
+  });
+  const emptyLoginRes = await loginHandler(emptyLoginReq);
+  const emptyLoginJson = await emptyLoginRes.json();
+  assert(
+    emptyLoginRes.status === 400 && emptyLoginJson.success === false,
+    'POST /api/auth/login with empty credentials returns 400 Bad Request'
+  );
+
+  // B. Incorrect credentials returns 401 Unauthorized
+  const badLoginReq = new Request('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'wrong@example.com', password: 'wrongpassword' }),
+  });
+  const badLoginRes = await loginHandler(badLoginReq);
+  const badLoginJson = await badLoginRes.json();
+  assert(
+    badLoginRes.status === 401 && badLoginJson.success === false,
+    'POST /api/auth/login with incorrect credentials returns 401 Unauthorized'
+  );
+
+  // C. Valid demo credentials succeeds with 200 OK and returns user
+  const validCredsReq = new Request('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@bloodnavigator.org', password: 'password' }),
+  });
+  const validCredsRes = await loginHandler(validCredsReq);
+  const validCredsJson = await validCredsRes.json();
+  assert(
+    validCredsRes.status === 200 && validCredsJson.success === true && validCredsJson.user?.email === 'admin@bloodnavigator.org',
+    'POST /api/auth/login with correct demo credentials returns 200 OK and authenticates user'
+  );
+
+  // D. Explicit demo login succeeds with 200 OK
+  const explicitDemoReq = new Request('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ demo: true }),
+  });
+  const explicitDemoRes = await loginHandler(explicitDemoReq);
+  const explicitDemoJson = await explicitDemoRes.json();
+  assert(
+    explicitDemoRes.status === 200 && explicitDemoJson.success === true,
+    'POST /api/auth/login with demo: true succeeds with 200 OK'
+  );
+
+  // ───────────────────────────────────────────────────────────────────────────
   // 4. Protected Server Mutations Access Enforcement
   // ───────────────────────────────────────────────────────────────────────────
   console.log('\n--- 4. Protected Server Mutations Access Enforcement ---');

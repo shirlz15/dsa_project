@@ -12,7 +12,8 @@ import Link from 'next/link';
 function LoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get('from') || '/dashboard';
+  const rawReturnTo = searchParams.get('from');
+  const returnTo = rawReturnTo && rawReturnTo !== '/login' ? rawReturnTo : '/dashboard';
   const loginAdmin = useStore((s) => s.loginAdmin);
 
   const [email, setEmail] = useState('');
@@ -24,12 +25,12 @@ function LoginFormContent() {
 
   // If user already has a valid server session, redirect to destination
   useEffect(() => {
-    fetch('/api/auth/session')
+    fetch('/api/auth/session', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.authenticated && data.user) {
           loginAdmin({
-            id: data.user.id,
+            id: data.user.id || data.user.userId,
             name: data.user.name,
             email: data.user.email,
             role: data.user.role,
@@ -38,13 +39,14 @@ function LoginFormContent() {
             sessionToken: data.user.sessionToken,
             authenticatedAt: data.user.authenticatedAt,
           });
+          router.refresh();
           router.replace(returnTo);
         }
       })
       .catch(() => {});
   }, [router, returnTo, loginAdmin]);
 
-  // ── Credential Login (simulated) ─────────────────────────────────────────
+  // ── Credential Login ─────────────────────────────────────────────────────
   const handleCredentialLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -61,21 +63,23 @@ function LoginFormContent() {
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (data.success) {
-        // Sync client store with server session
+      if (res.ok && data.success) {
+        // Sync client store with server session immediately
         loginAdmin({
-          id: data.user.userId,
-          name: data.user.name,
-          email: data.user.email,
-          role: data.user.role,
-          facility: data.user.facility,
-          badgeNumber: data.user.badgeNumber,
-          sessionToken: `SES-DEMO-${Date.now()}`,
+          id: data.user.id || data.user.userId || 'ADMIN-NA-7701',
+          name: data.user.name || 'Dr. Ramesh Kumar',
+          email: data.user.email || email,
+          role: data.user.role || 'Network Director',
+          facility: data.user.facility || 'State Emergency Hematology Logistics Command',
+          badgeNumber: data.user.badgeNumber || 'BN-DIR-0881',
+          sessionToken: data.user.sessionToken || `SES-DEMO-${Date.now()}`,
           authenticatedAt: new Date().toISOString(),
         });
-        router.push(returnTo);
+        // Invalidate Next.js client router cache so protected route loads immediately without browser refresh
+        router.refresh();
+        router.replace(returnTo);
       } else {
-        setError(data.error || 'Authentication failed.');
+        setError(data.error || 'Authentication failed. Please check your credentials.');
       }
     } catch {
       setError('Network error. Please try again.');
@@ -96,18 +100,19 @@ function LoginFormContent() {
         body: JSON.stringify({ demo: true }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         loginAdmin({
-          id: data.user.userId,
-          name: data.user.name,
-          email: data.user.email,
-          role: data.user.role,
-          facility: data.user.facility,
-          badgeNumber: data.user.badgeNumber,
-          sessionToken: `SES-DEMO-SIM-${Date.now()}`,
+          id: data.user.id || data.user.userId || 'ADMIN-NA-7701',
+          name: data.user.name || 'Dr. Ramesh Kumar',
+          email: data.user.email || 'admin@bloodnavigator.org',
+          role: data.user.role || 'Network Director',
+          facility: data.user.facility || 'State Emergency Hematology Logistics Command',
+          badgeNumber: data.user.badgeNumber || 'BN-DIR-0881',
+          sessionToken: data.user.sessionToken || `SES-DEMO-SIM-${Date.now()}`,
           authenticatedAt: new Date().toISOString(),
         });
-        router.push(returnTo);
+        router.refresh();
+        router.replace(returnTo);
       } else {
         setError(data.error || 'Demo session creation failed.');
       }
@@ -152,6 +157,29 @@ function LoginFormContent() {
               Simulated demonstration authentication for DSA academic project.
               Not production-grade security.
             </span>
+          </div>
+
+          {/* Demo Credentials Helper Box */}
+          <div style={styles.credentialsBox}>
+            <div style={styles.credentialsHeader}>
+              <Key size={13} color="#38bdf8" />
+              <span>Valid Demo Administrator Credentials</span>
+            </div>
+            <div style={styles.credentialsBody}>
+              <div><span style={{ color: '#94a3b8' }}>Email:</span> <strong style={{ color: '#f1f5f9' }}>admin@bloodnavigator.org</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>Password:</span> <strong style={{ color: '#f1f5f9' }}>password</strong> <span style={{ color: '#64748b' }}>(or admin123)</span></div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('admin@bloodnavigator.org');
+                setPassword('password');
+                setError('');
+              }}
+              style={styles.autofillBtn}
+            >
+              Auto-fill Demo Credentials
+            </button>
           </div>
 
           {/* Error banner */}
@@ -377,7 +405,43 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '11px',
     color: '#fde047',
     lineHeight: 1.5,
-    marginBottom: '20px',
+    marginBottom: '16px',
+  },
+  credentialsBox: {
+    background: 'rgba(56, 189, 248, 0.05)',
+    border: '1px solid rgba(56, 189, 248, 0.2)',
+    borderRadius: '8px',
+    padding: '12px 14px',
+    marginBottom: '18px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  credentialsHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#38bdf8',
+  },
+  credentialsBody: {
+    fontSize: '11px',
+    color: '#cbd5e1',
+    lineHeight: 1.6,
+  },
+  autofillBtn: {
+    alignSelf: 'flex-start',
+    background: 'rgba(56, 189, 248, 0.12)',
+    color: '#7dd3fc',
+    border: '1px solid rgba(56, 189, 248, 0.3)',
+    borderRadius: '6px',
+    padding: '4px 10px',
+    fontSize: '11px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: "'Inter', sans-serif",
+    transition: 'all 0.15s ease',
   },
   errorBanner: {
     display: 'flex',
