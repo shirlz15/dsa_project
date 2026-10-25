@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { calculateFeasibility, rankResults } from '@/lib/feasibility-engine';
 import { CircularLinkedList, Deque, dijkstra, bubbleSortBy, selectionSortBy, insertionSortBy, mergeSortBy, GenericSortResult } from '@/lib/dsa-engine';
 import { BloodBank, ReviewTask, FeasibilityResult } from '@/lib/types';
+import DsaUsedSection from '@/components/DsaUsedSection';
 
 function formatMin(m: number): string {
   if (m <= 0) return '0m';
@@ -1447,53 +1448,41 @@ function RedistributionContent() {
           </div>
         )}
 
-        {/* ─── 7. Collapsible: How the algorithm works ──────────────────────── */}
-        <details className="card" style={{ marginTop: 20, border: '1px solid var(--border-color)' }}>
-          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
-            <CheckCircle size={16} color="var(--color-primary)" />
-            <span>How the algorithm works: Circular Rotation, Deque Scheduling, Dijkstra Routing &amp; O(n log n) Sorting</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto', fontWeight: 400 }}>Click to expand operational proof</span>
-          </summary>
-          <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', paddingTop: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-primary)', marginBottom: 6 }}>
-                  1. Circular Linked List (Round-Robin Bank Review)
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  Participating blood banks form a closed cyclic structure where the last bank’s node pointer references the head. The traversal visits each facility sequentially (A → B → C → A) to ensure fair inventory inspection without starving isolated taluk hospitals, terminating automatically after exactly 1 complete round.
-                </div>
-              </div>
-
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-danger)', marginBottom: 6 }}>
-                  2. Double-Ended Queue (Deque) Worklist
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  Review tasks are scheduled via a Deque with O(1) front and rear operations. Critical shelf-life emergencies (&lt;24h) and trauma deficits are pushed to the <strong>FRONT</strong> for immediate evaluation. Routine stock rebalances and scheduled audits are appended to the <strong>REAR</strong>.
-                </div>
-              </div>
-
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-info)', marginBottom: 6 }}>
-                  3. Dijkstra Shortest-Path Graph Routing
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  Drone transfer durations are calculated by finding the minimum-cost path between source and destination nodes across the operating air corridor network. Flight minutes are computed from path distance at 60 km/h cruising velocity plus simulated meteorological delays.
-                </div>
-              </div>
-
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-warning)', marginBottom: 6 }}>
-                  4. Time-Decay Feasibility Invariant
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  A candidate transfer is strictly rejected if <code>remainingTime − (transit + processing + safetyMargin) &le; 0</code>. This guarantees that no blood product is transferred if it would expire in flight or arrive with zero usable clinical shelf life.
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
+        <DsaUsedSection
+          pageContext="Double-ended task review, circular bank rotation, Dijkstra air-corridor routing, and candidate sorting"
+          items={[
+            {
+              name: 'Deque',
+              purpose: 'Bi-directional review task scheduling based on clinical urgency.',
+              application: 'Supports inserting/popping tasks at either end. Critical shelf-life emergencies (<24h) and trauma deficits are pushed to the FRONT for immediate evaluation; routine stock rebalancing tasks are appended to the REAR.',
+              timeComplexity: 'O(1) insertFront, insertRear, deleteFront, and deleteRear; Space: O(k) for k active review tasks.',
+            },
+            {
+              name: 'Circular Linked List',
+              purpose: 'Fair, round-robin cyclic review across regional blood bank facilities.',
+              application: 'Links participating blood bank records in a closed cycle where the last node points back to the head. Advances from one bank to the next (A → B → C → A) to ensure systematic facility audits without starving remote taluk centers.',
+              timeComplexity: 'O(1) step to next node; O(n) to traverse one complete cycle of n blood banks.',
+            },
+            {
+              name: 'Dijkstra\'s Algorithm',
+              purpose: 'Calculates the lowest-cost drone transit route between facilities.',
+              application: 'Traverses the weighted waypoint graph between source and destination blood banks, computing optimal flight duration (at 60 km/h) avoiding designated no-fly obstacles.',
+              timeComplexity: 'O(V²) with priority array, or O((V + E) log V) with min-heap; non-negative edge weights.',
+            },
+            {
+              name: 'Bubble Sort',
+              purpose: 'Comparison-based ordering of candidate redistribution units by clinical viability.',
+              application: 'Sorts candidate units by usable remaining shelf-life via adjacent pairwise comparisons and swaps with deterministic tie-breaking.',
+              timeComplexity: 'O(n²) worst/average; O(n) best case on nearly sorted candidates.',
+            },
+            {
+              name: 'Insertion Sort',
+              purpose: 'Incremental ordering of redistribution candidates by feasibility score.',
+              application: 'Builds a sorted sequence by shifting larger elements to insert each candidate unit into its exact ranked position for transfer prioritization.',
+              timeComplexity: 'O(n²) worst/average; O(n) best case on partially sorted records.',
+            },
+          ]}
+        />
       </div>
     </>
   );

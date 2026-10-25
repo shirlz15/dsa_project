@@ -1202,3 +1202,197 @@ export function dijkstra(nodes: GraphNode[], edges: GraphEdge[], startId: string
     steps, visitedNodes: [...visited], exploredEdges,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 13. BINARY SEARCH TREE (BST) — Hierarchical Expiry Indexing & Range Retrieval
+// Course Outcome CO4: Tree structure for an engineering problem.
+// Keys = Expiry timestamps (epoch ms); Values = Array of Inventory units with that expiry.
+// Enables:
+// - O(log n) average insertion and search
+// - O(log n) retrieval of earliest-expiring unit (findMin)
+// - O(log n + k) range query for critical expiry windows [now, now + 48h] by pruning subtrees
+// - O(n) in-order traversal yielding chronologically ordered inventory
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export class BSTNode<T> {
+  key: number;
+  data: T[];
+  left: BSTNode<T> | null = null;
+  right: BSTNode<T> | null = null;
+  height: number = 1;
+
+  constructor(key: number, item: T) {
+    this.key = key;
+    this.data = [item];
+  }
+}
+
+export interface BSTRangeResult<T> {
+  items: T[];
+  nodesVisited: number;
+  keysExamined: number[];
+  steps: string[];
+}
+
+export interface BSTSearchResult<T> {
+  found: boolean;
+  key: number;
+  items: T[];
+  comparisons: number;
+  steps: string[];
+}
+
+export class BinarySearchTree<T> {
+  root: BSTNode<T> | null = null;
+  private _size: number = 0;
+  private _steps: DSAStep[] = [];
+
+  get steps() { return [...this._steps]; }
+  clearSteps() { this._steps = []; }
+  get size() { return this._size; }
+  isEmpty() { return this.root === null; }
+
+  insert(key: number, item: T): void {
+    const newNode = new BSTNode<T>(key, item);
+    if (!this.root) {
+      this.root = newNode;
+      this._size++;
+      this._steps.push({
+        operation: 'insert',
+        detail: `Inserted key ${key} at root`,
+        stateSnapshot: `Root: ${key}`,
+      });
+      return;
+    }
+
+    let curr: BSTNode<T> | null = this.root;
+    while (curr) {
+      if (key === curr.key) {
+        curr.data.push(item);
+        this._size++;
+        this._steps.push({
+          operation: 'insert (duplicate key)',
+          detail: `Appended item to existing key ${key} (bucket size: ${curr.data.length})`,
+          stateSnapshot: `Key: ${key}, Count: ${curr.data.length}`,
+        });
+        return;
+      } else if (key < curr.key) {
+        if (!curr.left) {
+          curr.left = newNode;
+          this._size++;
+          this._steps.push({
+            operation: 'insert',
+            detail: `Inserted key ${key} to the LEFT of ${curr.key}`,
+            stateSnapshot: `Left child of ${curr.key}`,
+          });
+          return;
+        }
+        curr = curr.left;
+      } else {
+        if (!curr.right) {
+          curr.right = newNode;
+          this._size++;
+          this._steps.push({
+            operation: 'insert',
+            detail: `Inserted key ${key} to the RIGHT of ${curr.key}`,
+            stateSnapshot: `Right child of ${curr.key}`,
+          });
+          return;
+        }
+        curr = curr.right;
+      }
+    }
+  }
+
+  search(key: number): BSTSearchResult<T> {
+    let curr = this.root;
+    let comparisons = 0;
+    const steps: string[] = [];
+
+    while (curr) {
+      comparisons++;
+      steps.push(`Compare key ${key} with node ${curr.key}`);
+      if (key === curr.key) {
+        steps.push(`Match found at key ${curr.key} (${curr.data.length} item(s))`);
+        return { found: true, key, items: [...curr.data], comparisons, steps };
+      } else if (key < curr.key) {
+        steps.push(`${key} < ${curr.key} → Traverse LEFT subtree`);
+        curr = curr.left;
+      } else {
+        steps.push(`${key} > ${curr.key} → Traverse RIGHT subtree`);
+        curr = curr.right;
+      }
+    }
+    steps.push(`Key ${key} not found after ${comparisons} comparison(s)`);
+    return { found: false, key, items: [], comparisons, steps };
+  }
+
+  findMin(): { key: number; items: T[] } | null {
+    if (!this.root) return null;
+    let curr = this.root;
+    while (curr.left) curr = curr.left;
+    return { key: curr.key, items: [...curr.data] };
+  }
+
+  findMax(): { key: number; items: T[] } | null {
+    if (!this.root) return null;
+    let curr = this.root;
+    while (curr.right) curr = curr.right;
+    return { key: curr.key, items: [...curr.data] };
+  }
+
+  // Range query: retrieves all items with key in [minKey, maxKey]
+  // Prunes left subtree if curr.key <= minKey, prunes right subtree if curr.key >= maxKey
+  rangeSearch(minKey: number, maxKey: number): BSTRangeResult<T> {
+    const items: T[] = [];
+    const keysExamined: number[] = [];
+    const steps: string[] = [];
+    let nodesVisited = 0;
+
+    function traverse(node: BSTNode<T> | null) {
+      if (!node) return;
+      nodesVisited++;
+      keysExamined.push(node.key);
+
+      // If minKey < node.key, left subtree might have matching keys
+      if (minKey < node.key) {
+        steps.push(`Node ${node.key}: minKey ${minKey} < ${node.key} → explore LEFT`);
+        traverse(node.left);
+      }
+
+      // If node.key is within [minKey, maxKey], include its items
+      if (node.key >= minKey && node.key <= maxKey) {
+        steps.push(`Node ${node.key} is within range [${minKey}, ${maxKey}] → COLLECT ${node.data.length} item(s)`);
+        items.push(...node.data);
+      }
+
+      // If maxKey > node.key, right subtree might have matching keys
+      if (maxKey > node.key) {
+        steps.push(`Node ${node.key}: maxKey ${maxKey} > ${node.key} → explore RIGHT`);
+        traverse(node.right);
+      }
+    }
+
+    traverse(this.root);
+    return { items, nodesVisited, keysExamined, steps };
+  }
+
+  inOrderTraversal(): { key: number; items: T[] }[] {
+    const result: { key: number; items: T[] }[] = [];
+    function traverse(node: BSTNode<T> | null) {
+      if (!node) return;
+      traverse(node.left);
+      result.push({ key: node.key, items: [...node.data] });
+      traverse(node.right);
+    }
+    traverse(this.root);
+    return result;
+  }
+
+  clear(): void {
+    this.root = null;
+    this._size = 0;
+    this._steps = [];
+  }
+}
+

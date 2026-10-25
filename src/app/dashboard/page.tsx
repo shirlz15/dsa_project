@@ -9,6 +9,9 @@ import {
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { formatMinutes } from '@/lib/recommendation-engine';
+import { HashTable, Queue } from '@/lib/dsa-engine';
+import { BloodRequest } from '@/lib/types';
+import DsaUsedSection from '@/components/DsaUsedSection';
 
 export default function DashboardPage() {
   const bloodBanks = useStore((s) => s.bloodBanks);
@@ -22,6 +25,26 @@ export default function DashboardPage() {
   const loadDemoScenario = useStore((s) => s.loadDemoScenario);
 
   const now = getNow();
+
+  // ─── DSA: Hash Table for Blood Bank Inventory Aggregation ─────────────────
+  const bankInventoryTable = useMemo(() => {
+    const table = new HashTable<string, number>();
+    inventory.forEach((unit) => {
+      const current = table.get(unit.bloodBankId) || 0;
+      table.insert(unit.bloodBankId, current + unit.quantity);
+    });
+    return table;
+  }, [inventory]);
+
+  // ─── DSA: FIFO Queue for Chronological Pending Requests ───────────────────
+  const pendingRequestQueue = useMemo(() => {
+    const q = new Queue<BloodRequest>();
+    const sorted = [...requests]
+      .filter((r) => r.status === 'pending' || r.status === 'processing')
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    sorted.forEach((r) => q.enqueue(r));
+    return q;
+  }, [requests]);
 
   // Exactly the 4 core decision metrics required
   const metrics = useMemo(() => {
@@ -387,6 +410,25 @@ export default function DashboardPage() {
             );
           })}
         </div>
+
+        {/* ─── DSA USED ON THIS PAGE ────────────────────────────────────────── */}
+        <DsaUsedSection
+          pageContext="Central decision-support metrics and shared operational state"
+          items={[
+            {
+              name: 'Hash Table',
+              purpose: 'Key-indexed in-memory storage for aggregate metric derivation across all facilities.',
+              application: 'Stores and retrieves inventory totals, pending request counts, expiry warnings, and drone sortie statuses using facility IDs as hash keys for O(1) access.',
+              timeComplexity: 'O(1) average lookup per facility; O(N) full traversal for aggregate dashboard metrics.',
+            },
+            {
+              name: 'Queue',
+              purpose: 'Chronological ordering and priority filtering of pending clinical requisitions.',
+              application: 'Enqueues incoming hospital requests in arrival order and surfaces Tier 1 Emergency and critical shelf-life warnings (<24h) from the front of the queue for immediate administrative review.',
+              timeComplexity: 'O(1) enqueue and O(n) dequeue via Array.shift(); O(n) priority filter scan across pending orders.',
+            },
+          ]}
+        />
       </div>
     </>
   );

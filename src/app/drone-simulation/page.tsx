@@ -10,6 +10,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { bfs, dfs, dijkstra, GraphAlgorithmResult, CircularQueue } from '@/lib/dsa-engine';
 import { GraphNode, GraphEdge, AlgorithmStep, DroneTelemetryEvent } from '@/lib/types';
+import DsaUsedSection from '@/components/DsaUsedSection';
 
 type AlgoType = 'bfs' | 'dfs' | 'dijkstra';
 
@@ -804,44 +805,35 @@ function DroneSimulationContent() {
           </div>
         </div>
 
-        {/* ─── Collapsible: How the algorithm works ────────────────────────── */}
-        <details className="card" style={{ marginTop: 24, border: '1px solid var(--border-color)' }}>
-          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
-            <Sparkles size={16} color="var(--color-primary)" />
-            <span>How the algorithm works: Graph Routing (BFS, DFS, Dijkstra) &amp; Circular Queue</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto', fontWeight: 400 }}>Click to expand operational proof</span>
-          </summary>
-          <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', paddingTop: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-primary)', marginBottom: 6 }}>
-                  Graph Traversal &amp; Pathfinding
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  <strong>Dijkstra (O(V²)):</strong> Computes the exact minimum Euclidean corridor flight distance avoiding designated no-fly obstacles.
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 4 }}>
-                  <strong>BFS (O(V+E)):</strong> Finds path with minimal intermediate waypoints (unweighted hop count).
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 4 }}>
-                  <strong>DFS (O(V+E)):</strong> Recursive branch exploration exploring deep corridors before backtracking.
-                </div>
-              </div>
-
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-info)', marginBottom: 6 }}>
-                  Bounded Telemetry Ring Buffer
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  <strong>Circular Queue (Capacity {RING_CAPACITY}):</strong> Operates with index wraparound: <code>rear = (rear + 1) % capacity</code>.
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 4 }}>
-                  Fixed capacity bounds memory footprint during high-frequency telemetry updates while preserving the newest events in O(1) time.
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
+        <DsaUsedSection
+          pageContext="Corridor traversal, shortest-path calculation, and telemetry ring buffer"
+          items={[
+            {
+              name: 'BFS (Breadth-First Search)',
+              purpose: 'Level-by-level corridor exploration finding routes by hop count.',
+              application: 'Traverses waypoint network level-by-level from departure vertex using a queue, finding paths with minimal transit hops.',
+              timeComplexity: 'O(V + E) time, O(V) space for visited set and queue.',
+            },
+            {
+              name: 'DFS (Depth-First Search)',
+              purpose: 'Deep corridor branch exploration with backtracking for airway corridors.',
+              application: 'Explores along airway paths as far as possible before backtracking via stack recursion, tracing alternative flight corridors.',
+              timeComplexity: 'O(V + E) time, O(V) space for call stack and visited tracking.',
+            },
+            {
+              name: 'Dijkstra\'s Algorithm',
+              purpose: 'Calculates the lowest-cost drone route between facilities.',
+              application: 'Finds optimal minimum distance corridor route avoiding designated obstacle zones between departure and arrival stations.',
+              timeComplexity: 'O(V²) with linear vertex scan; non-negative edge weights.',
+            },
+            {
+              name: 'Circular Queue',
+              purpose: 'Bounded telemetry event logging with automatic overwrite.',
+              application: 'Stores the recent drone telemetry readings (GPS coordinates, battery levels, delay alerts) with fixed-size ring buffer overwriting the oldest slot.',
+              timeComplexity: 'O(1) enqueue and dequeue operations; O(capacity) bounded space.',
+            },
+          ]}
+        />
       </div>
     </>
   );

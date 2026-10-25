@@ -9,6 +9,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { BLOOD_TYPES, COMPONENT_TYPES, BloodType, ComponentType, BloodRequest } from '@/lib/types';
 import { Queue } from '@/lib/dsa-engine';
+import DsaUsedSection from '@/components/DsaUsedSection';
 
 export default function RequestsPage() {
   const requests = useStore((s) => s.requests);
@@ -36,7 +37,7 @@ export default function RequestsPage() {
     const qRoutine = new Queue<BloodRequest>();
 
     const pendingChronological = requests
-      .filter((r) => r.status === 'pending' || r.status === 'processing')
+      .filter((r) => r.status === 'pending')
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     pendingChronological.forEach((r) => {
@@ -355,20 +356,18 @@ export default function RequestsPage() {
           </div>
         </details>
 
-        {/* Collapsible How the Algorithm Works Section (Requirement 7) */}
-        <details className="card" style={{ padding: '12px 18px', background: 'rgba(255, 255, 255, 0.02)' }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: '12px', color: '#94a3b8' }}>
-            How the algorithm works: Priority Queue &amp; FIFO Processing
-          </summary>
-          <div style={{ marginTop: 12, fontSize: '11px', color: '#cbd5e1', lineHeight: 1.5 }}>
-            <p style={{ margin: '0 0 6px' }}>
-              <strong>Multi-Tier Priority Queue:</strong> Requisitions are partitioned into 3 urgency queues: Tier 1 (Emergency, e.g. trauma), Tier 2 (Urgent, e.g. acute scheduled surgery), and Tier 3 (Routine restocking).
-            </p>
-            <p style={{ margin: 0 }}>
-              <strong>Strict FIFO In-Class Servicing:</strong> Within any single priority class, requests are handled strictly in chronological arrival order (FIFO) using custom pointer queues. This guarantees equitable allocation without starvation among patients of identical urgency.
-            </p>
-          </div>
-        </details>
+        {/* ─── DSA USED ON THIS PAGE ────────────────────────────────────────── */}
+        <DsaUsedSection
+          pageContext="Multi-tier clinical requisition triage and FIFO servicing"
+          items={[
+            {
+              name: 'Queue',
+              purpose: 'Maintains chronological arrival order of requests within each priority tier.',
+              application: 'Three separate Queue instances partition requests into Emergency (Tier 1), Urgent (Tier 2), and Routine (Tier 3). Requests are enqueued in arrival order and dequeued FIFO within each tier.',
+              timeComplexity: 'O(n) dequeue via Array.shift(); O(1) enqueue via Array.push().',
+            },
+          ]}
+        />
       </div>
     </>
   );

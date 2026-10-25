@@ -7,7 +7,7 @@ import {
   HashTable, linearSearch, binarySearch, interpolationSearch,
   bubbleSort, selectionSort, insertionSort, mergeSort,
   bubbleSortBy, selectionSortBy, insertionSortBy, mergeSortBy,
-  bfs, dfs, dijkstra
+  bfs, dfs, dijkstra, BinarySearchTree
 } from '../dsa-engine';
 import { calculateFeasibility } from '../feasibility-engine';
 import { BloodBank, InventoryUnit, BloodRequest, GraphNode, GraphEdge } from '../types';
@@ -276,6 +276,53 @@ const delayedFeasibility = calculateFeasibility({
 });
 assert(!delayedFeasibility[0].feasible, 'Excessive route delay triggers recalculation and marks candidate as infeasible');
 assert(delayedFeasibility[0].usableTimeAfterTransfer < 0, 'usableTimeAfterTransfer correctly drops below 0');
+
+// ─── 12. BINARY SEARCH TREE (BST) TESTS (CO4) ────────────────────────────────
+console.log('\n--- 12. Testing Binary Search Tree (CO4: Engineering Expiry Tree Index & Range Retrieval) ---');
+const bst = new BinarySearchTree<{ id: string; bloodType: string }>();
+assert(bst.isEmpty(), 'BST initializes empty');
+assert(bst.size === 0, 'BST initial size is 0');
+assert(bst.findMin() === null, 'BST findMin returns null on empty tree');
+
+// Insert timestamp keys (simulated expiry hours: 10h, 5h, 20h, 15h, 2h, 30h)
+bst.insert(10, { id: 'unit-10', bloodType: 'O+' });
+bst.insert(5, { id: 'unit-5', bloodType: 'A+' });
+bst.insert(20, { id: 'unit-20', bloodType: 'B+' });
+bst.insert(15, { id: 'unit-15', bloodType: 'AB+' });
+bst.insert(2, { id: 'unit-2', bloodType: 'O-' });
+bst.insert(30, { id: 'unit-30', bloodType: 'A-' });
+assert(bst.size === 6, 'BST correctly inserts all 6 units across hierarchy');
+assert(!bst.isEmpty(), 'BST is not empty after inserts');
+
+// Test Min and Max
+const minExpiry = bst.findMin();
+assert(minExpiry !== null && minExpiry.key === 2, 'BST findMin correctly locates earliest expiring unit (key = 2)');
+const maxExpiry = bst.findMax();
+assert(maxExpiry !== null && maxExpiry.key === 30, 'BST findMax correctly locates furthest expiring unit (key = 30)');
+
+// Test exact key search
+const searchRes = bst.search(15);
+assert(searchRes.found, 'BST search finds existing key 15 in O(log n)');
+assert(searchRes.items[0].id === 'unit-15', 'BST search returns correct item');
+const searchMissing = bst.search(99);
+assert(!searchMissing.found, 'BST search correctly reports not found for absent key');
+
+// Test duplicate key insertion into same bucket
+bst.insert(15, { id: 'unit-15-dup', bloodType: 'B-' });
+const searchDup = bst.search(15);
+assert(searchDup.items.length === 2, 'BST appends item to bucket when keys collide at same expiry');
+assert(bst.size === 7, 'BST tracks total items correctly with duplicates');
+
+// Test In-Order Traversal (Sorted order)
+const inOrder = bst.inOrderTraversal();
+const keys = inOrder.map((n) => n.key);
+assert(JSON.stringify(keys) === JSON.stringify([2, 5, 10, 15, 20, 30]), 'BST in-order traversal yields strictly sorted keys: [2, 5, 10, 15, 20, 30]');
+
+// Test Range Search [5, 20] (critical shelf life window)
+const rangeRes = bst.rangeSearch(5, 20);
+const rangeIds = rangeRes.items.map((u) => u.id).sort();
+assert(rangeRes.items.length === 5, 'BST rangeSearch returns all units expiring between 5h and 20h');
+assert(rangeRes.keysExamined.length > 0, 'BST records examined keys during branch traversal');
 
 // ─── SUMMARY ────────────────────────────────────────────────────────────────
 console.log('\n=============================================');

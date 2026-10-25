@@ -8,7 +8,8 @@ import {
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ExpiryRisk, InventoryUnit } from '@/lib/types';
-import { mergeSortBy, binarySearch } from '@/lib/dsa-engine';
+import { insertionSortBy, binarySearch, BinarySearchTree } from '@/lib/dsa-engine';
+import DsaUsedSection from '@/components/DsaUsedSection';
 
 function formatTime(ms: number): string {
   if (ms <= 0) return 'Expired';
@@ -37,13 +38,22 @@ export default function ExpiryMonitoringPage() {
 
   const now = getNow();
 
-  // ─── DSA: MergeSort by Expiry Timestamp Ascending ──────────────────────────
+  // ─── DSA: Insertion Sort by Expiry Timestamp Ascending ──────────────────────
   const sortedInventory = useMemo(() => {
     const available = inventory.filter((u) => u.status === 'available' || u.status === 'reserved');
     const keyFn = (u: InventoryUnit) => new Date(u.expiryTimestamp).getTime();
     const tieBreaker = (a: InventoryUnit, b: InventoryUnit) => a.id.localeCompare(b.id);
-    return mergeSortBy(available, keyFn, tieBreaker, false).sorted;
+    return insertionSortBy(available, keyFn, tieBreaker, false).sorted;
   }, [inventory]);
+
+  // ─── DSA: Binary Search Tree for Expiry Window Range Queries ────────────────
+  const bst = useMemo(() => {
+    const tree = new BinarySearchTree<InventoryUnit>();
+    sortedInventory.forEach((unit) => {
+      tree.insert(new Date(unit.expiryTimestamp).getTime(), unit);
+    });
+    return tree;
+  }, [sortedInventory]);
 
   // ─── DSA: Binary Search to Locate Expiry Threshold Bisector (O(log n)) ─────
   const thresholdBisector = useMemo(() => {
@@ -311,42 +321,30 @@ export default function ExpiryMonitoringPage() {
           </div>
         )}
 
-        {/* ─── Collapsible: How the algorithm works ────────────────────────── */}
-        <details className="card" style={{ marginTop: 24, border: '1px solid var(--border-color)' }}>
-          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
-            <Binary size={16} color="var(--color-primary)" />
-            <span>How the algorithm works: Priority Sorting & Binary Search Bisector</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto', fontWeight: 400 }}>Click to expand operational proof</span>
-          </summary>
-          <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', paddingTop: 14 }}>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
-              Inventory units are ordered ascending by expiry timestamp via deterministic <strong>MergeSort (O(n log n))</strong>. Rather than scanning each record linearly, <strong>Binary Search (O(log n))</strong> locates the exact cutoff boundaries in <strong>{thresholdBisector.comparisons} comparisons</strong>.
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div style={{ background: 'rgba(220, 38, 38, 0.08)', border: '1px solid rgba(220, 38, 38, 0.2)', padding: '12px 14px', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 700 }}>CRITICAL BISECTOR INDEX</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>Index #{thresholdBisector.criticalIndex}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Units before this boundary have &lt; {expiryThresholds.criticalHours}h remaining shelf-life.
-                </div>
-              </div>
-              <div style={{ background: 'rgba(234, 88, 12, 0.08)', border: '1px solid rgba(234, 88, 12, 0.2)', padding: '12px 14px', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-warning)', fontWeight: 700 }}>WARNING BISECTOR INDEX</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>Index #{thresholdBisector.warningIndex}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Units before this boundary have &lt; {expiryThresholds.warningHours}h remaining shelf-life.
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '12px 14px', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-info)', fontWeight: 700 }}>SEARCH COMPLEXITY</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>O(log n)</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Total {thresholdBisector.comparisons} probe comparisons executed against {sortedInventory.length} sorted batches.
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
+        {/* ─── DSA USED ON THIS PAGE ────────────────────────────────────────── */}
+        <DsaUsedSection
+          pageContext="Real-time clinical shelf-life countdown and multi-horizon triage"
+          items={[
+            {
+              name: 'Binary Search',
+              purpose: 'Logarithmic cutoff boundary calculation across expiry categories.',
+              application: 'Pinpoints the exact index separating critical (<24h) and warning (<48h) batches over sorted inventory timestamps without a full linear scan.',
+              timeComplexity: 'O(log n) search over sorted timestamps.',
+            },
+            {
+              name: 'Insertion Sort',
+              purpose: 'Stable chronological ordering of active inventory records.',
+              application: 'Sorts all non-quarantined units ascending by expiration timestamp with deterministic unit ID tie-breaking.',
+              timeComplexity: 'O(n²) worst/average case; O(n) best case on nearly sorted input.',
+            },
+            {
+              name: 'Binary Search Tree (BST)',
+              purpose: 'Interval classification and range query for dynamic clinical triage.',
+              application: 'Indexes batches hierarchically by time-to-decay, supporting sub-linear extraction of earliest expiring units and near-term risk windows.',
+              timeComplexity: 'O(log n) average search and insert; O(log n + k) range query.',
+            },
+          ]}
+        />
       </div>
     </>
   );

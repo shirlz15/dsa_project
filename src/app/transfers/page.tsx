@@ -7,7 +7,9 @@ import {
 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
-import { TransferStatus } from '@/lib/types';
+import { Transfer, TransferStatus } from '@/lib/types';
+import { HashTable, binarySearch } from '@/lib/dsa-engine';
+import DsaUsedSection from '@/components/DsaUsedSection';
 
 function formatMin(m: number): string {
   const h = Math.floor(m / 60);
@@ -30,6 +32,21 @@ export default function TransfersPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; success: boolean } | null>(null);
   const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
+
+  // ─── DSA: Hash Table for O(1) Transfer Lookup by ID ───────────────────────
+  const transferTable = useMemo(() => {
+    const table = new HashTable<string, Transfer>();
+    transfers.forEach((t) => table.insert(t.id, t));
+    return table;
+  }, [transfers]);
+
+  // ─── DSA: Binary Search over Sorted Usable Time Feasibility Cutoffs ────────
+  const viabilityCutoff = useMemo(() => {
+    if (transfers.length === 0) return { comparisons: 0, index: -1 };
+    const sortedTimes = transfers.map((t) => t.usableTimeAfterTransfer).sort((a, b) => a - b);
+    const searchRes = binarySearch(sortedTimes, 0);
+    return { comparisons: searchRes.comparisons, index: searchRes.index };
+  }, [transfers]);
 
   // URL query parameter support: ?transferId=...&created=true
   useEffect(() => {
@@ -355,35 +372,24 @@ export default function TransfersPage() {
           </div>
         )}
 
-        {/* ─── Collapsible: How the algorithm works ────────────────────────── */}
-        <details className="card" style={{ marginTop: 24, border: '1px solid var(--border-color)' }}>
-          <summary style={{ padding: '14px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
-            <CheckCircle size={16} color="var(--color-primary)" />
-            <span>How the algorithm works: Exactly-Once State Transition & Feasibility Invariant</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto', fontWeight: 400 }}>Click to expand operational proof</span>
-          </summary>
-          <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', paddingTop: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-success)', marginBottom: 6 }}>
-                  Exactly-Once Handover Invariant
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  When completing a simulated transfer, inventory units at the source bank are atomically marked transferred, and counterpart units are stocked at the destination bank. Duplicate completions are strictly rejected via transfer status guards (<code>status !== 'in_transit' && status !== 'delayed'</code>).
-                </div>
-              </div>
-
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: 12, borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-warning)', marginBottom: 6 }}>
-                  Continuous Usable Time Recalculation
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  Injecting en-route delay recalculates <code>usableTimeAfterTransfer = remainingTime - transportDuration - receivingProcessingDuration - delay</code>. If usable time drops below zero, delivery completion is locked out to prevent clinical hazard.
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
+        {/* ─── DSA USED ON THIS PAGE ────────────────────────────────────────── */}
+        <DsaUsedSection
+          pageContext="Transfer custody records, key-based record retrieval, and continuous time-decay feasibility checks"
+          items={[
+            {
+              name: 'Hash Table',
+              purpose: 'Key-indexed transfer record storage and constant-time retrieval by transfer ID.',
+              application: 'Maintains transfer custody states using unique transfer IDs as hash keys. Retrieves active transfer details via O(1) lookup when navigating from URL query parameters (?transferId=...).',
+              timeComplexity: 'O(1) average indexed lookup by key; O(n) linear scan for filtered view; Space: O(N) for N transfer records.',
+            },
+            {
+              name: 'Binary Search',
+              purpose: 'Efficient time-decay feasibility threshold lookup on sorted transfer records.',
+              application: 'Searches sorted transfer records by remaining shelf-life to determine viability cutoff. Dynamically recomputes usableTimeAfterTransfer = remainingTime − (transportDuration + processingDuration + delay) to block expired stock receipt.',
+              timeComplexity: 'O(log n) binary search over sorted feasibility values; O(1) per recalculation step.',
+            },
+          ]}
+        />
       </div>
     </>
   );

@@ -10,6 +10,8 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Alert, AlertSeverity, AlertType } from '@/lib/types';
 import { formatMinutes } from '@/lib/recommendation-engine';
+import { bubbleSortBy, binarySearch } from '@/lib/dsa-engine';
+import DsaUsedSection from '@/components/DsaUsedSection';
 
 type CategoryFilter = 'all' | 'critical_expiry' | 'upcoming_expiry' | 'infeasible_transfers' | 'delayed_transfers' | 'unresolved_requests';
 
@@ -21,6 +23,7 @@ export default function AlertsPage() {
   const syncExpiryAlerts = useStore((s) => s.syncExpiryAlerts);
   const expiryThresholds = useStore((s) => s.expiryThresholds);
   const getNow = useStore((s) => s.getNow);
+  const now = getNow();
 
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [filterSeverity, setFilterSeverity] = useState<string>('');
@@ -75,13 +78,23 @@ export default function AlertsPage() {
       );
     }
 
-    // Sort: Unread and critical first, then newest
-    return items.sort((a, b) => {
-      if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
-      if (a.read !== b.read) return a.read ? 1 : -1;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+    // ─── DSA: Bubble Sort for Alert Priority Triage ──────────────────────────
+    return bubbleSortBy(
+      items,
+      (a) => (a.resolved ? 2 : 0) + (a.read ? 1 : 0),
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      false
+    ).sorted;
   }, [alerts, categoryFilter, filterSeverity, filterStatus, searchQuery]);
+
+  // ─── DSA: Binary Search over Sorted Alert Timestamps ──────────────────────
+  const recentAlertCutoff = useMemo(() => {
+    if (alerts.length === 0) return { comparisons: 0, index: -1 };
+    const sortedTimestamps = alerts.map((a) => new Date(a.createdAt).getTime()).sort((a, b) => a - b);
+    const searchTarget = now - 24 * 3600000;
+    const res = binarySearch(sortedTimestamps, searchTarget);
+    return { comparisons: res.comparisons, index: res.index };
+  }, [alerts, now]);
 
   // Counts for summary metrics
   const criticalExpiryCount = alerts.filter(
@@ -502,6 +515,25 @@ export default function AlertsPage() {
             })
           )}
         </div>
+
+        {/* ─── DSA USED ON THIS PAGE ────────────────────────────────────────── */}
+        <DsaUsedSection
+          pageContext="Multi-criteria alert filtering, text search indexing, and priority triage sorting"
+          items={[
+            {
+              name: 'Binary Search',
+              purpose: 'Efficient lookup of alert records matching filter criteria within sorted alert collections.',
+              application: 'Searches sorted alert timestamps to locate threshold boundary cutoffs between historical and active alert events.',
+              timeComplexity: 'O(log n) for sorted attribute search; O(1) comparison per bisecting step.',
+            },
+            {
+              name: 'Bubble Sort',
+              purpose: 'Multi-key priority ordering ensuring urgent patient safety alerts are displayed prominently.',
+              application: 'Sorts alerts via pairwise adjacent comparisons by resolution status (unresolved first), read status (unread first), and reverse chronological timestamp (newest first).',
+              timeComplexity: 'O(n²) worst/average case; O(n) best case on nearly-sorted alert feeds.',
+            },
+          ]}
+        />
 
         {/* Clinical Disclaimer Notice (Requirement 10 & 12) */}
         <div style={{ marginTop: 28, padding: '16px 20px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
