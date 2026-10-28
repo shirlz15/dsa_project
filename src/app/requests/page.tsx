@@ -9,6 +9,8 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { BLOOD_TYPES, COMPONENT_TYPES, BloodType, ComponentType, BloodRequest } from '@/lib/types';
 import { Queue } from '@/lib/dsa-engine';
+import { buildPriorityQueues } from '@/lib/dsa/requestQueue';
+import { buildRequestPriorityQueue } from '@/lib/dsa/requestPriorityQueue';
 import DsaUsedSection from '@/components/DsaUsedSection';
 
 export default function RequestsPage() {
@@ -30,34 +32,9 @@ export default function RequestsPage() {
     quantity: '1', priority: 'urgent' as 'routine' | 'urgent' | 'emergency', neededByHours: '24', notes: '',
   });
 
-  // ─── DSA: Custom Queues partitioned by Priority Class (FIFO within class) ──
+  // ─── DSA: Custom Queues partitioned by Priority Class (Member 2: Kaitlyn Grace J) ──
   const { emergencyQueue, urgentQueue, routineQueue, unifiedQueueList } = useMemo(() => {
-    const qEmergency = new Queue<BloodRequest>();
-    const qUrgent = new Queue<BloodRequest>();
-    const qRoutine = new Queue<BloodRequest>();
-
-    const pendingChronological = requests
-      .filter((r) => r.status === 'pending')
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    pendingChronological.forEach((r) => {
-      if (r.priority === 'emergency') qEmergency.enqueue(r);
-      else if (r.priority === 'urgent') qUrgent.enqueue(r);
-      else qRoutine.enqueue(r);
-    });
-
-    const unified: { request: BloodRequest; queuePosition: number; tier: string }[] = [];
-    let pos = 1;
-    qEmergency.toArray().forEach((r) => unified.push({ request: r, queuePosition: pos++, tier: 'Emergency (Tier 1)' }));
-    qUrgent.toArray().forEach((r) => unified.push({ request: r, queuePosition: pos++, tier: 'Urgent (Tier 2)' }));
-    qRoutine.toArray().forEach((r) => unified.push({ request: r, queuePosition: pos++, tier: 'Routine (Tier 3)' }));
-
-    return {
-      emergencyQueue: qEmergency,
-      urgentQueue: qUrgent,
-      routineQueue: qRoutine,
-      unifiedQueueList: unified,
-    };
+    return buildPriorityQueues(requests);
   }, [requests]);
 
   // Front of current priority tier
@@ -361,10 +338,16 @@ export default function RequestsPage() {
           pageContext="Multi-tier clinical requisition triage and FIFO servicing"
           items={[
             {
-              name: 'Queue',
+              name: 'Queue (FIFO)',
               purpose: 'Maintains chronological arrival order of requests within each priority tier.',
               application: 'Three separate Queue instances partition requests into Emergency (Tier 1), Urgent (Tier 2), and Routine (Tier 3). Requests are enqueued in arrival order and dequeued FIFO within each tier.',
               timeComplexity: 'O(n) dequeue via Array.shift(); O(1) enqueue via Array.push().',
+            },
+            {
+              name: 'Priority Queue (Min-Heap)',
+              purpose: 'Logarithmic dispatch prioritization across all clinical requisitions.',
+              application: 'Binary min-heap orders requests by severity rank (Emergency > Urgent > Routine) with timestamp tiebreakers for optimal O(log n) dispatching.',
+              timeComplexity: 'O(log n) insert/extractMin; O(1) peek.',
             },
           ]}
         />

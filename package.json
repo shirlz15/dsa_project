@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npx tsx src/lib/__tests__/dsa-engine.test.ts && npx tsx src/lib/__tests__/auth-security.test.ts",
+    "test": "npx tsx src/lib/__tests__/dsa-engine.test.ts && npx tsx src/lib/__tests__/member-dsa.test.ts && npx tsx src/lib/__tests__/auth-security.test.ts",
     "test:auth": "npx tsx src/lib/__tests__/auth-security.test.ts"
   },
   "dependencies": {

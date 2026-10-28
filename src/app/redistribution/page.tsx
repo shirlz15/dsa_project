@@ -11,6 +11,10 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { calculateFeasibility, rankResults } from '@/lib/feasibility-engine';
 import { CircularLinkedList, Deque, dijkstra, bubbleSortBy, selectionSortBy, insertionSortBy, mergeSortBy, GenericSortResult } from '@/lib/dsa-engine';
+import { BloodBankCircularList } from '@/lib/dsa/circularLinkedList';
+import { RedistributionDeque } from '@/lib/dsa/redistributionDeque';
+import { checkTransferFeasibility } from '@/lib/dsa/transferFeasibility';
+import { runDijkstra } from '@/lib/dsa/dijkstra';
 import { BloodBank, ReviewTask, FeasibilityResult } from '@/lib/types';
 import DsaUsedSection from '@/components/DsaUsedSection';
 
@@ -116,11 +120,11 @@ function RedistributionContent() {
   const [resultSortAlgo, setResultSortAlgo] = useState<SortAlgo>('merge');
   const [sortField, setSortField] = useState<'usableTime' | 'score' | 'remaining'>('usableTime');
 
-  // ─── DSA 1: Circular Linked List for Periodic Blood Bank Review Cycle ──────
+  // ─── DSA 1: Circular Linked List for Periodic Blood Bank Review Cycle (Member 3: Aneesha M) ──────
   const bankCircularList = useMemo(() => {
-    const cll = new CircularLinkedList<BloodBank>();
-    bloodBanks.forEach((b) => cll.insert(b));
-    return cll;
+    const list = new BloodBankCircularList();
+    list.buildFromBanks(bloodBanks);
+    return list;
   }, [bloodBanks]);
 
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
@@ -294,7 +298,7 @@ function RedistributionContent() {
       const sId = srcNode?.id || (sourceBankId === 'bb-1' ? 'n-bb1' : sourceBankId === 'bb-2' ? 'n-bb2' : sourceBankId === 'bb-3' ? 'n-bb3' : sourceBankId === 'bb-4' ? 'n-bb4' : 'n-bb5');
       const dId = dstNode?.id || (destBankId === 'bb-1' ? 'n-bb1' : destBankId === 'bb-2' ? 'n-bb2' : destBankId === 'bb-3' ? 'n-bb3' : destBankId === 'bb-4' ? 'n-bb4' : 'n-bb5');
 
-      const route = dijkstra(graphState.nodes, graphState.edges, sId, dId);
+      const route = runDijkstra(graphState.nodes, graphState.edges, sId, dId);
       if (route && route.path.length > 0 && route.distance > 0) {
         // Drone speed 60 km/h -> duration = (distance / 60) * 60 min = distance in minutes
         const flightMin = Math.round(route.distance) + simulatedDelay;
@@ -461,6 +465,21 @@ function RedistributionContent() {
       return {
         isValid: false,
         reason: `Inventory unit ${activeCandidate.unitId} is not available (current status: ${unit?.status || 'missing'}).`,
+      };
+    }
+
+    // Direct validation via Member 3's transferFeasibility module
+    const singleFeas = checkTransferFeasibility({
+      unit,
+      transportDurationMin: activeCandidate.transportDuration,
+      processingDurationMin: activeCandidate.receivingProcessingDuration,
+      safetyMarginMin: activeCandidate.safetyMargin,
+      nowMs: now,
+    });
+    if (!singleFeas.feasible) {
+      return {
+        isValid: false,
+        reason: singleFeas.reason,
       };
     }
 

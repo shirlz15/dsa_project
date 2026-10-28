@@ -9,6 +9,9 @@ import { useState, useRef, useEffect, useCallback, useMemo, Suspense } from 'rea
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { bfs, dfs, dijkstra, GraphAlgorithmResult, CircularQueue } from '@/lib/dsa-engine';
+import { runBFS, runDFS } from '@/lib/dsa/graphTraversal';
+import { runDijkstra } from '@/lib/dsa/dijkstra';
+import { TelemetryCircularQueue } from '@/lib/dsa/circularQueue';
 import { GraphNode, GraphEdge, AlgorithmStep, DroneTelemetryEvent } from '@/lib/types';
 import DsaUsedSection from '@/components/DsaUsedSection';
 
@@ -114,8 +117,8 @@ function DroneSimulationContent() {
     }
   }, [activeTransfer, graphState.nodes]);
 
-  // ─── DSA: Fixed-Capacity Circular Queue for Simulation Telemetry ───────────
-  const telemetryQueueRef = useRef(new CircularQueue<DroneTelemetryEvent>(RING_CAPACITY));
+  // ─── DSA: Fixed-Capacity Circular Queue for Simulation Telemetry (Member 4: Angeline Maria S) ──
+  const telemetryQueueRef = useRef(new TelemetryCircularQueue(RING_CAPACITY));
   const [telemetrySnapshot, setTelemetrySnapshot] = useState<{
     buffer: (DroneTelemetryEvent | null)[];
     front: number;
@@ -144,31 +147,24 @@ function DroneSimulationContent() {
     };
 
     q.enqueueWithOverwrite(event);
-
-    setTelemetrySnapshot({
-      buffer: q.toArray(),
-      front: q.frontIndex,
-      rear: q.rearIndex,
-      size: q.size(),
-      capacity: q.capacity,
-    });
+    setTelemetrySnapshot(q.getSnapshot());
   }, []);
 
   const nonObstacleNodes = graphState.nodes.filter((n) => n.type !== 'obstacle');
 
-  // Calculate route
+  // Calculate route (Member 4: Angeline Maria S)
   const handleCalculateRoute = useCallback(() => {
     if (!sourceNode || !destNode) return;
     let result: GraphAlgorithmResult;
     switch (algorithm) {
       case 'bfs':
-        result = bfs(graphState.nodes, graphState.edges, sourceNode, destNode);
+        result = runBFS(graphState.nodes, graphState.edges, sourceNode, destNode);
         break;
       case 'dfs':
-        result = dfs(graphState.nodes, graphState.edges, sourceNode, destNode);
+        result = runDFS(graphState.nodes, graphState.edges, sourceNode, destNode);
         break;
       case 'dijkstra':
-        result = dijkstra(graphState.nodes, graphState.edges, sourceNode, destNode);
+        result = runDijkstra(graphState.nodes, graphState.edges, sourceNode, destNode);
         break;
     }
     setRouteResult(result);

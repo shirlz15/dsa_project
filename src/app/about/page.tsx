@@ -38,6 +38,80 @@ export default function AboutPage() {
         </div>
 
         <div className="card" style={{ marginTop: 20 }}>
+          <div className="card-header">
+            <h2>Team Members &amp; Source Code Responsibilities</h2>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Four-Member DSA Internal Assessment Architecture</span>
+          </div>
+          <div className="card-body">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+              <div style={{ padding: 16, background: 'var(--bg-tertiary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <strong style={{ color: 'var(--accent-primary)', fontSize: 14 }}>Member 1: Shirley Y. S.</strong>
+                  <span className="badge badge-info" style={{ fontSize: 11 }}>URK25CS1081</span>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9', marginBottom: 6 }}>Inventory Storage, Searching &amp; Sorting</div>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.5 }}>
+                  Responsible for key-based unit indexing, remaining shelf-life binary search, multi-algorithm inventory ordering, and BST range queries.
+                </p>
+                <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#38bdf8' }}>
+                  • inventoryHashTable.ts<br />
+                  • binarySearch.ts<br />
+                  • inventorySorting.ts<br />
+                  • binarySearchTree.ts
+                </div>
+              </div>
+
+              <div style={{ padding: 16, background: 'var(--bg-tertiary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <strong style={{ color: 'var(--accent-primary)', fontSize: 14 }}>Member 2: Kaitlyn Grace J</strong>
+                  <span className="badge badge-info" style={{ fontSize: 11 }}>URK25CS1209</span>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9', marginBottom: 6 }}>Hospital Request Processing</div>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.5 }}>
+                  Responsible for FIFO requisition queuing and emergency clinical dispatch prioritization using priority queues.
+                </p>
+                <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#38bdf8' }}>
+                  • requestQueue.ts<br />
+                  • requestPriorityQueue.ts
+                </div>
+              </div>
+
+              <div style={{ padding: 16, background: 'var(--bg-tertiary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <strong style={{ color: 'var(--accent-primary)', fontSize: 14 }}>Member 3: Aneesha M</strong>
+                  <span className="badge badge-info" style={{ fontSize: 11 }}>URK25CS1219</span>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9', marginBottom: 6 }}>Redistribution Planning &amp; Validation</div>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.5 }}>
+                  Responsible for double-ended review worklists (Deque), cyclic blood bank rotation, and transfer-feasibility validation.
+                </p>
+                <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#38bdf8' }}>
+                  • redistributionDeque.ts<br />
+                  • circularLinkedList.ts<br />
+                  • transferFeasibility.ts
+                </div>
+              </div>
+
+              <div style={{ padding: 16, background: 'var(--bg-tertiary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <strong style={{ color: 'var(--accent-primary)', fontSize: 14 }}>Member 4: Angeline Maria S</strong>
+                  <span className="badge badge-info" style={{ fontSize: 11 }}>URK25CS1224</span>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9', marginBottom: 6 }}>Drone Delivery Operations &amp; Graphs</div>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.5 }}>
+                  Responsible for graph traversals (BFS/DFS), Dijkstra shortest weighted route, and fixed-capacity circular queue telemetry buffers.
+                </p>
+                <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#38bdf8' }}>
+                  • graphTraversal.ts<br />
+                  • dijkstra.ts<br />
+                  • circularQueue.ts
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 20 }}>
           <div className="card-header"><h2>Key Features</h2></div>
           <div className="card-body">
             <div className="grid-3">

@@ -13,6 +13,9 @@ import {
   bubbleSortBy, selectionSortBy, insertionSortBy, mergeSortBy, GenericSortResult,
   BinarySearchTree
 } from '@/lib/dsa-engine';
+import { InventoryHashTableManager } from '@/lib/dsa/inventoryHashTable';
+import { inventoryBinarySearch } from '@/lib/dsa/binarySearch';
+import { sortInventory } from '@/lib/dsa/inventorySorting';
 import DsaUsedSection from '@/components/DsaUsedSection';
 
 function formatTimeRemaining(ms: number): string {
@@ -74,13 +77,11 @@ export default function InventoryPage() {
     storageTemp: '2-6°C', transportEligible: true,
   });
 
-  // ─── DSA 1: Build Custom Hash Table for Fast ID Lookup ──────────────────────
+  // ─── DSA 1: Build Custom Hash Table for Fast ID Lookup (Member 1: Shirley Y. S.) ──
   const inventoryHashTable = useMemo(() => {
-    const table = new HashTable<string, InventoryUnit>(31);
-    inventory.forEach((unit) => {
-      table.insert(unit.id, unit);
-    });
-    return table;
+    const mgr = new InventoryHashTableManager(31);
+    mgr.buildFromInventory(inventory);
+    return mgr;
   }, [inventory]);
 
   // ─── DSA 2: Build Node-based Linked List ────────────────────────────────────
@@ -102,7 +103,7 @@ export default function InventoryPage() {
     return tree;
   }, [inventory, now]);
 
-  // ─── DSA 4: Sort Records with Selected Algorithm ────────────────────────────
+  // ─── DSA 4: Sort Records with Selected Algorithm (Member 1: Shirley Y. S.) ──────
   const { sortedItems, sortMetrics } = useMemo(() => {
     let items = [...inventory];
 
@@ -114,126 +115,39 @@ export default function InventoryPage() {
     if (filterStatus) items = items.filter((u) => u.status === filterStatus);
     if (filterBank) items = items.filter((u) => u.bloodBankId === filterBank);
 
-    // Key extractor based on sortField
-    const keyFn = (u: InventoryUnit): number => {
-      if (sortField === 'expiry') return new Date(u.expiryTimestamp).getTime();
-      if (sortField === 'remaining') return Math.max(0, new Date(u.expiryTimestamp).getTime() - now);
-      if (sortField === 'quantity') return u.quantity;
-      let code = 0;
-      for (let i = 0; i < u.id.length; i++) code = (code * 31 + u.id.charCodeAt(i)) % 1000000;
-      return code;
-    };
-
-    const tieBreaker = (a: InventoryUnit, b: InventoryUnit) => a.id.localeCompare(b.id);
-
-    let result: GenericSortResult<InventoryUnit>;
-    const descending = sortField === 'remaining' || sortField === 'quantity';
-
-    switch (sortAlgo) {
-      case 'bubble':
-        result = bubbleSortBy(items, keyFn, tieBreaker, descending);
-        break;
-      case 'insertion':
-        result = insertionSortBy(items, keyFn, tieBreaker, descending);
-        break;
-      case 'selection':
-        result = selectionSortBy(items, keyFn, tieBreaker, descending);
-        break;
-      case 'merge':
-      default:
-        result = mergeSortBy(items, keyFn, tieBreaker, descending);
-        break;
-    }
+    const { sorted, metrics } = sortInventory(items, sortField, sortAlgo, now);
 
     return {
-      sortedItems: result.sorted,
-      sortMetrics: {
-        comparisons: result.comparisons,
-        swaps: result.swaps,
-        timeMs: Number(result.timeMs.toFixed(2)),
-        algoName: result.algorithmName,
-      },
+      sortedItems: sorted,
+      sortMetrics: metrics,
     };
   }, [inventory, search, filterType, filterStatus, filterBank, sortField, sortAlgo, now]);
 
-  // Execute Hash Table Lookup
+  // Execute Hash Table Lookup (Member 1: Shirley Y. S.)
   const handleExecuteHashLookup = (keyToSearch: string) => {
     const key = keyToSearch.trim();
     if (!key) return;
 
     const lookupRes = inventoryHashTable.lookup(key);
-    const hashIndex = inventoryHashTable.computeHash(key);
 
     setHashResultTrace({
       target: key,
       found: lookupRes.found,
-      unit: lookupRes.value,
+      unit: lookupRes.unit,
       bucketIndex: lookupRes.bucketIndex,
-      computedHash: hashIndex,
+      computedHash: lookupRes.computedHash,
       comparisons: lookupRes.comparisons,
-      capacity: inventoryHashTable.capacity,
+      capacity: lookupRes.capacity,
     });
   };
 
-  // Execute Binary Search over Inventory pre-sorted by Expiry Date
+  // Execute Binary Search over Inventory pre-sorted by Expiry Date (Member 1: Shirley Y. S.)
   const handleExecuteBinarySearch = (targetHoursStr: string) => {
     const targetHours = parseFloat(targetHoursStr);
     if (isNaN(targetHours)) return;
 
-    // 1. Ensure records are sorted by remaining expiry hours ascending
-    const sortedByExpiry = [...inventory].sort((a, b) => {
-      const remA = Math.max(0, (new Date(a.expiryTimestamp).getTime() - now) / 3600000);
-      const remB = Math.max(0, (new Date(b.expiryTimestamp).getTime() - now) / 3600000);
-      return remA - remB;
-    });
-
-    const hoursArr = sortedByExpiry.map((u) => Math.round(Math.max(0, (new Date(u.expiryTimestamp).getTime() - now) / 3600000)));
-
-    // 2. Perform Binary Search
-    let low = 0;
-    let high = hoursArr.length - 1;
-    let comparisons = 0;
-    let foundIndex = -1;
-    const steps: { low: number; high: number; mid: number; midValue: number; comparison: string }[] = [];
-
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2);
-      comparisons++;
-      const midVal = hoursArr[mid];
-
-      if (midVal === targetHours) {
-        steps.push({
-          low, high, mid, midValue: midVal,
-          comparison: `arr[${mid}] = ${midVal}h == ${targetHours}h (Match Found ✓)`
-        });
-        foundIndex = mid;
-        break;
-      } else if (midVal < targetHours) {
-        steps.push({
-          low, high, mid, midValue: midVal,
-          comparison: `arr[${mid}] = ${midVal}h < ${targetHours}h → search RIGHT [${mid + 1}..${high}]`
-        });
-        low = mid + 1;
-      } else {
-        steps.push({
-          low, high, mid, midValue: midVal,
-          comparison: `arr[${mid}] = ${midVal}h > ${targetHours}h → search LEFT [${low}..${mid - 1}]`
-        });
-        high = mid - 1;
-      }
-    }
-
-    setBinarySearchResult({
-      targetHours,
-      found: foundIndex !== -1,
-      unit: foundIndex !== -1 ? sortedByExpiry[foundIndex] : null,
-      comparisons,
-      steps,
-      sortedSample: sortedByExpiry.slice(0, 8).map((u) => ({
-        id: u.id,
-        hours: Math.round(Math.max(0, (new Date(u.expiryTimestamp).getTime() - now) / 3600000)),
-      })),
-    });
+    const result = inventoryBinarySearch(inventory, targetHours, now);
+    setBinarySearchResult(result);
   };
 
   // Execute BST Range Query (CO4)
